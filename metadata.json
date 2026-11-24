@@ -1,0 +1,6 @@
+{
+  "name": "ASCEND — Become your best version",
+  "description": "Gamified self-improvement web app for training, grooming, style, and daily habits.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

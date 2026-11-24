@@ -1,0 +1,747 @@
+{
+  "runId": "bench_2026-11-23T23-40-44-333Z_bbba7c",
+  "createdAt": "2026-11-23T23:40:53.402Z",
+  "config": {
+    "mode": "live",
+    "allowLiveRequests": true,
+    "timeoutMs": 25000,
+    "delayBetweenCallsMs": 250,
+    "temperature": 0.4,
+    "maxTokens": 1200
+  },
+  "discovery": {
+    "secrets": {
+      "google-gemini": {
+        "providerId": "google-gemini",
+        "displayName": "Google Gemini",
+        "envVarKey": "GEMINI_API_KEY",
+        "presentInEnv": false,
+        "available": true,
+        "source": "local-control-server",
+        "controlModel": "gemini-3.5-flash-lite"
+      },
+      "groq": {
+        "providerId": "groq",
+        "displayName": "Groq",
+        "envVarKey": "GROQ_API_KEY",
+        "presentInEnv": false,
+        "available": false,
+        "source": "missing"
+      },
+      "openrouter": {
+        "providerId": "openrouter",
+        "displayName": "OpenRouter",
+        "envVarKey": "OPENROUTER_API_KEY",
+        "presentInEnv": false,
+        "available": false,
+        "source": "missing"
+      },
+      "mistral": {
+        "providerId": "mistral",
+        "displayName": "Mistral AI",
+        "envVarKey": "MISTRAL_API_KEY",
+        "presentInEnv": false,
+        "available": false,
+        "source": "missing"
+      }
+    },
+    "catalog": {
+      "google-gemini": {
+        "status": "verified_via_control_health",
+        "availableForInference": true,
+        "transport": "local-control-server",
+        "modelsCount": 1,
+        "models": [
+          "gemini-3.5-flash-lite"
+        ]
+      },
+      "openrouter": {
+        "status": "public_catalog_fetched",
+        "availableForInference": false,
+        "missingSecret": "OPENROUTER_API_KEY",
+        "totalCatalogModels": 476,
+        "freeModelsCount": 12,
+        "freeModels": [
+          {
+            "id": "inclusionai/ling-3.2-flash:free",
+            "name": "inclusionAI: Ling 3.2 Flash (free)",
+            "contextLength": 1048576,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "baidu/ernie-5.5-flash-preview:free",
+            "name": "Baidu: ERNIE-5.5-Flash-Preview (free)",
+            "contextLength": 1024000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "liquid/lfm-3-1.7b:free",
+            "name": "LiquidAI: LFM3-1.7B (free)",
+            "contextLength": 262144,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "particle-ai/particle-1:free",
+            "name": "Particle AI: Particle-1 (free)",
+            "contextLength": 1048576,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "recursive/flint-v1.0:free",
+            "name": "Recursive: Flint (free)",
+            "contextLength": 262144,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "nvidia/nemotron-3.5-super-vl:free",
+            "name": "NVIDIA: Nemotron 3.5 Super VL (free)",
+            "contextLength": 1000000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "dots-studio/dots-3-note-preview:free",
+            "name": "Dots Studio: Dots3-Note Preview (free)",
+            "contextLength": 512000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "nvidia/nemotron-3.5-lightning:free",
+            "name": "NVIDIA: Nemotron 3.5 Lightning (free)",
+            "contextLength": 1000000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "name": "NVIDIA: Nemotron 3 Ultra (free)",
+            "contextLength": 1000000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+            "name": "NVIDIA: Nemotron 3 Nano Omni (free)",
+            "contextLength": 256000,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "google/gemma-4-26b-a4b-it:free",
+            "name": "Google: Gemma 4 26B A4B  (free)",
+            "contextLength": 262144,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          },
+          {
+            "id": "google/gemma-4-31b-it:free",
+            "name": "Google: Gemma 4 31B (free)",
+            "contextLength": 262144,
+            "pricingPrompt": "0",
+            "pricingCompletion": "0"
+          }
+        ]
+      },
+      "groq": {
+        "status": "skipped_missing_key",
+        "availableForInference": false,
+        "missingSecret": "GROQ_API_KEY",
+        "models": []
+      },
+      "mistral": {
+        "status": "skipped_missing_key",
+        "availableForInference": false,
+        "missingSecret": "MISTRAL_API_KEY",
+        "models": []
+      }
+    }
+  },
+  "scenariosCount": 1,
+  "scenariosMeta": [
+    {
+      "id": "small-talk-ru-01",
+      "category": "small_talk",
+      "lang": "ru",
+      "title": "Small talk (RU): базовое приветствие без навязчивости"
+    }
+  ],
+  "summary": [
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.5-flash-lite",
+      "modelLabel": "Gemini 3.5 Flash Lite (Control Baseline)",
+      "role": "control",
+      "qualityEvaluation": {
+        "scale": "1-10",
+        "overallQuality1to10": 8.4,
+        "dimensions": {
+          "intelligenceReasoning": 8.5,
+          "contextUnderstanding": 8.5,
+          "argumentationQuality": 8,
+          "naturalCommunication": 8.5,
+          "barrettPersonaAdherence": 8.5,
+          "accuracy": 8.5,
+          "responseStructure": 8
+        }
+      },
+      "technicalMetrics": {
+        "totalRequests": 1,
+        "successfulRequests": 1,
+        "failedRequests": 0,
+        "successRatePercent": 100,
+        "avgLatencyMs": 9056,
+        "p95LatencyMs": 9056,
+        "minLatencyMs": 9056,
+        "maxLatencyMs": 9056,
+        "httpErrorCounts": {},
+        "modelAvailability": "verified-in-project-config",
+        "tokenUsage": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0
+        },
+        "cost": {
+          "status": "unavailable",
+          "estimatedTotalUsd": null,
+          "pricingNote": "UNVERIFIED"
+        }
+      }
+    },
+    {
+      "providerId": "groq",
+      "modelId": "openai/gpt-oss-120b",
+      "modelLabel": "GPT-OSS 120B (Groq — Verify Availability)",
+      "role": "candidate",
+      "qualityEvaluation": {
+        "scale": "1-10",
+        "overallQuality1to10": 1,
+        "dimensions": {
+          "intelligenceReasoning": 1,
+          "contextUnderstanding": 1,
+          "argumentationQuality": 1,
+          "naturalCommunication": 1,
+          "barrettPersonaAdherence": 1,
+          "accuracy": 1,
+          "responseStructure": 1
+        }
+      },
+      "technicalMetrics": {
+        "totalRequests": 1,
+        "successfulRequests": 0,
+        "failedRequests": 1,
+        "successRatePercent": 0,
+        "avgLatencyMs": 0,
+        "p95LatencyMs": 0,
+        "minLatencyMs": 0,
+        "maxLatencyMs": 0,
+        "httpErrorCounts": {
+          "401": 1
+        },
+        "modelAvailability": "unverified_requires_api_check",
+        "tokenUsage": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0
+        },
+        "cost": {
+          "status": "unavailable",
+          "estimatedTotalUsd": null,
+          "pricingNote": "UNVERIFIED"
+        }
+      }
+    },
+    {
+      "providerId": "openrouter",
+      "modelId": "google/gemma-4-31b-it:free",
+      "modelLabel": "Google: Gemma 4 31B (:free)",
+      "role": "candidate",
+      "qualityEvaluation": {
+        "scale": "1-10",
+        "overallQuality1to10": 1,
+        "dimensions": {
+          "intelligenceReasoning": 1,
+          "contextUnderstanding": 1,
+          "argumentationQuality": 1,
+          "naturalCommunication": 1,
+          "barrettPersonaAdherence": 1,
+          "accuracy": 1,
+          "responseStructure": 1
+        }
+      },
+      "technicalMetrics": {
+        "totalRequests": 1,
+        "successfulRequests": 0,
+        "failedRequests": 1,
+        "successRatePercent": 0,
+        "avgLatencyMs": 0,
+        "p95LatencyMs": 0,
+        "minLatencyMs": 0,
+        "maxLatencyMs": 0,
+        "httpErrorCounts": {
+          "401": 1
+        },
+        "modelAvailability": "verified-in-openrouter-catalog",
+        "tokenUsage": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0
+        },
+        "cost": {
+          "status": "unavailable",
+          "estimatedTotalUsd": null,
+          "pricingNote": "verified-free-catalog"
+        }
+      }
+    },
+    {
+      "providerId": "mistral",
+      "modelId": "mistral-candidate-slot-1",
+      "modelLabel": "Mistral Candidate #1 (TBD)",
+      "role": "candidate",
+      "qualityEvaluation": {
+        "scale": "1-10",
+        "overallQuality1to10": 1,
+        "dimensions": {
+          "intelligenceReasoning": 1,
+          "contextUnderstanding": 1,
+          "argumentationQuality": 1,
+          "naturalCommunication": 1,
+          "barrettPersonaAdherence": 1,
+          "accuracy": 1,
+          "responseStructure": 1
+        }
+      },
+      "technicalMetrics": {
+        "totalRequests": 1,
+        "successfulRequests": 0,
+        "failedRequests": 1,
+        "successRatePercent": 0,
+        "avgLatencyMs": 0,
+        "p95LatencyMs": 0,
+        "minLatencyMs": 0,
+        "maxLatencyMs": 0,
+        "httpErrorCounts": {
+          "401": 1
+        },
+        "modelAvailability": "unverified_requires_docs_check",
+        "tokenUsage": {
+          "promptTokens": 0,
+          "completionTokens": 0,
+          "totalTokens": 0
+        },
+        "cost": {
+          "status": "unavailable",
+          "estimatedTotalUsd": null,
+          "pricingNote": "UNVERIFIED"
+        }
+      }
+    }
+  ],
+  "resultsByTarget": [
+    {
+      "providerId": "google-gemini",
+      "modelId": "gemini-3.5-flash-lite",
+      "aggregated": {
+        "providerId": "google-gemini",
+        "modelId": "gemini-3.5-flash-lite",
+        "modelLabel": "Gemini 3.5 Flash Lite (Control Baseline)",
+        "role": "control",
+        "qualityEvaluation": {
+          "scale": "1-10",
+          "overallQuality1to10": 8.4,
+          "dimensions": {
+            "intelligenceReasoning": 8.5,
+            "contextUnderstanding": 8.5,
+            "argumentationQuality": 8,
+            "naturalCommunication": 8.5,
+            "barrettPersonaAdherence": 8.5,
+            "accuracy": 8.5,
+            "responseStructure": 8
+          }
+        },
+        "technicalMetrics": {
+          "totalRequests": 1,
+          "successfulRequests": 1,
+          "failedRequests": 0,
+          "successRatePercent": 100,
+          "avgLatencyMs": 9056,
+          "p95LatencyMs": 9056,
+          "minLatencyMs": 9056,
+          "maxLatencyMs": 9056,
+          "httpErrorCounts": {},
+          "modelAvailability": "verified-in-project-config",
+          "tokenUsage": {
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0
+          },
+          "cost": {
+            "status": "unavailable",
+            "estimatedTotalUsd": null,
+            "pricingNote": "UNVERIFIED"
+          }
+        }
+      },
+      "runs": [
+        {
+          "scenarioId": "small-talk-ru-01",
+          "category": "small_talk",
+          "lang": "ru",
+          "plansRelevant": false,
+          "response": {
+            "ok": true,
+            "providerId": "google-gemini",
+            "modelId": "gemini-3.5-flash-lite",
+            "scenarioId": "small-talk-ru-01",
+            "rawText": "{\"emotion\":\"neutral\",\"reply\":\"Нормально, держим темп. Как твои дела, Алекс? Чем занят?\",\"profileQuote\":\"\",\"followUps\":[]}",
+            "parsed": {
+              "emotion": "neutral",
+              "reply": "Нормально, держим темп. Как твои дела, Алекс? Чем занят?",
+              "profileQuote": "",
+              "followUps": []
+            },
+            "metrics": {
+              "latencyMs": 9056,
+              "httpStatus": 200,
+              "errorCode": null,
+              "errorMessage": null,
+              "attempts": 1,
+              "usage": null,
+              "estimatedCostUsd": null,
+              "costStatus": "unavailable",
+              "available": true,
+              "isMock": false
+            }
+          },
+          "evaluation": {
+            "evaluated": true,
+            "judgeMode": "heuristic-baseline",
+            "scores": {
+              "intelligenceReasoning": 8.5,
+              "contextUnderstanding": 8.5,
+              "argumentationQuality": 8,
+              "naturalCommunication": 8.5,
+              "barrettPersonaAdherence": 8.5,
+              "accuracy": 8.5,
+              "responseStructure": 8
+            },
+            "overallQuality1to10": 8.4,
+            "checks": {
+              "validJson": true,
+              "languageOk": true,
+              "noForbiddenTerms": true,
+              "contextAnchorHit": true,
+              "noNumericRating": true,
+              "structureOk": true,
+              "cleanSmallTalk": true
+            },
+            "notes": []
+          }
+        }
+      ]
+    },
+    {
+      "providerId": "groq",
+      "modelId": "openai/gpt-oss-120b",
+      "aggregated": {
+        "providerId": "groq",
+        "modelId": "openai/gpt-oss-120b",
+        "modelLabel": "GPT-OSS 120B (Groq — Verify Availability)",
+        "role": "candidate",
+        "qualityEvaluation": {
+          "scale": "1-10",
+          "overallQuality1to10": 1,
+          "dimensions": {
+            "intelligenceReasoning": 1,
+            "contextUnderstanding": 1,
+            "argumentationQuality": 1,
+            "naturalCommunication": 1,
+            "barrettPersonaAdherence": 1,
+            "accuracy": 1,
+            "responseStructure": 1
+          }
+        },
+        "technicalMetrics": {
+          "totalRequests": 1,
+          "successfulRequests": 0,
+          "failedRequests": 1,
+          "successRatePercent": 0,
+          "avgLatencyMs": 0,
+          "p95LatencyMs": 0,
+          "minLatencyMs": 0,
+          "maxLatencyMs": 0,
+          "httpErrorCounts": {
+            "401": 1
+          },
+          "modelAvailability": "unverified_requires_api_check",
+          "tokenUsage": {
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0
+          },
+          "cost": {
+            "status": "unavailable",
+            "estimatedTotalUsd": null,
+            "pricingNote": "UNVERIFIED"
+          }
+        }
+      },
+      "runs": [
+        {
+          "scenarioId": "small-talk-ru-01",
+          "category": "small_talk",
+          "lang": "ru",
+          "plansRelevant": false,
+          "response": {
+            "ok": false,
+            "providerId": "groq",
+            "modelId": "openai/gpt-oss-120b",
+            "scenarioId": "small-talk-ru-01",
+            "rawText": "",
+            "parsed": null,
+            "metrics": {
+              "latencyMs": 0,
+              "httpStatus": 401,
+              "errorCode": "MISSING_PROVIDER_API_KEY",
+              "errorMessage": "Missing server env variable GROQ_API_KEY for provider groq.",
+              "attempts": 1,
+              "usage": null,
+              "estimatedCostUsd": null,
+              "costStatus": "unavailable",
+              "available": false,
+              "isMock": false
+            }
+          },
+          "evaluation": {
+            "evaluated": false,
+            "judgeMode": "failed-request",
+            "scores": {
+              "intelligenceReasoning": 1,
+              "contextUnderstanding": 1,
+              "argumentationQuality": 1,
+              "naturalCommunication": 1,
+              "barrettPersonaAdherence": 1,
+              "accuracy": 1,
+              "responseStructure": 1
+            },
+            "overallQuality1to10": 1,
+            "checks": {
+              "validJson": false,
+              "languageOk": false,
+              "noForbiddenTerms": true,
+              "contextAnchorHit": false,
+              "noNumericRating": true
+            },
+            "notes": [
+              "Request failed: MISSING_PROVIDER_API_KEY"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "providerId": "openrouter",
+      "modelId": "google/gemma-4-31b-it:free",
+      "aggregated": {
+        "providerId": "openrouter",
+        "modelId": "google/gemma-4-31b-it:free",
+        "modelLabel": "Google: Gemma 4 31B (:free)",
+        "role": "candidate",
+        "qualityEvaluation": {
+          "scale": "1-10",
+          "overallQuality1to10": 1,
+          "dimensions": {
+            "intelligenceReasoning": 1,
+            "contextUnderstanding": 1,
+            "argumentationQuality": 1,
+            "naturalCommunication": 1,
+            "barrettPersonaAdherence": 1,
+            "accuracy": 1,
+            "responseStructure": 1
+          }
+        },
+        "technicalMetrics": {
+          "totalRequests": 1,
+          "successfulRequests": 0,
+          "failedRequests": 1,
+          "successRatePercent": 0,
+          "avgLatencyMs": 0,
+          "p95LatencyMs": 0,
+          "minLatencyMs": 0,
+          "maxLatencyMs": 0,
+          "httpErrorCounts": {
+            "401": 1
+          },
+          "modelAvailability": "verified-in-openrouter-catalog",
+          "tokenUsage": {
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0
+          },
+          "cost": {
+            "status": "unavailable",
+            "estimatedTotalUsd": null,
+            "pricingNote": "verified-free-catalog"
+          }
+        }
+      },
+      "runs": [
+        {
+          "scenarioId": "small-talk-ru-01",
+          "category": "small_talk",
+          "lang": "ru",
+          "plansRelevant": false,
+          "response": {
+            "ok": false,
+            "providerId": "openrouter",
+            "modelId": "google/gemma-4-31b-it:free",
+            "scenarioId": "small-talk-ru-01",
+            "rawText": "",
+            "parsed": null,
+            "metrics": {
+              "latencyMs": 0,
+              "httpStatus": 401,
+              "errorCode": "MISSING_PROVIDER_API_KEY",
+              "errorMessage": "Missing server env variable OPENROUTER_API_KEY for provider openrouter.",
+              "attempts": 1,
+              "usage": null,
+              "estimatedCostUsd": null,
+              "costStatus": "unavailable",
+              "available": false,
+              "isMock": false
+            }
+          },
+          "evaluation": {
+            "evaluated": false,
+            "judgeMode": "failed-request",
+            "scores": {
+              "intelligenceReasoning": 1,
+              "contextUnderstanding": 1,
+              "argumentationQuality": 1,
+              "naturalCommunication": 1,
+              "barrettPersonaAdherence": 1,
+              "accuracy": 1,
+              "responseStructure": 1
+            },
+            "overallQuality1to10": 1,
+            "checks": {
+              "validJson": false,
+              "languageOk": false,
+              "noForbiddenTerms": true,
+              "contextAnchorHit": false,
+              "noNumericRating": true
+            },
+            "notes": [
+              "Request failed: MISSING_PROVIDER_API_KEY"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "providerId": "mistral",
+      "modelId": "mistral-candidate-slot-1",
+      "aggregated": {
+        "providerId": "mistral",
+        "modelId": "mistral-candidate-slot-1",
+        "modelLabel": "Mistral Candidate #1 (TBD)",
+        "role": "candidate",
+        "qualityEvaluation": {
+          "scale": "1-10",
+          "overallQuality1to10": 1,
+          "dimensions": {
+            "intelligenceReasoning": 1,
+            "contextUnderstanding": 1,
+            "argumentationQuality": 1,
+            "naturalCommunication": 1,
+            "barrettPersonaAdherence": 1,
+            "accuracy": 1,
+            "responseStructure": 1
+          }
+        },
+        "technicalMetrics": {
+          "totalRequests": 1,
+          "successfulRequests": 0,
+          "failedRequests": 1,
+          "successRatePercent": 0,
+          "avgLatencyMs": 0,
+          "p95LatencyMs": 0,
+          "minLatencyMs": 0,
+          "maxLatencyMs": 0,
+          "httpErrorCounts": {
+            "401": 1
+          },
+          "modelAvailability": "unverified_requires_docs_check",
+          "tokenUsage": {
+            "promptTokens": 0,
+            "completionTokens": 0,
+            "totalTokens": 0
+          },
+          "cost": {
+            "status": "unavailable",
+            "estimatedTotalUsd": null,
+            "pricingNote": "UNVERIFIED"
+          }
+        }
+      },
+      "runs": [
+        {
+          "scenarioId": "small-talk-ru-01",
+          "category": "small_talk",
+          "lang": "ru",
+          "plansRelevant": false,
+          "response": {
+            "ok": false,
+            "providerId": "mistral",
+            "modelId": "mistral-candidate-slot-1",
+            "scenarioId": "small-talk-ru-01",
+            "rawText": "",
+            "parsed": null,
+            "metrics": {
+              "latencyMs": 0,
+              "httpStatus": 401,
+              "errorCode": "MISSING_PROVIDER_API_KEY",
+              "errorMessage": "Missing server env variable MISTRAL_API_KEY for provider mistral.",
+              "attempts": 1,
+              "usage": null,
+              "estimatedCostUsd": null,
+              "costStatus": "unavailable",
+              "available": false,
+              "isMock": false
+            }
+          },
+          "evaluation": {
+            "evaluated": false,
+            "judgeMode": "failed-request",
+            "scores": {
+              "intelligenceReasoning": 1,
+              "contextUnderstanding": 1,
+              "argumentationQuality": 1,
+              "naturalCommunication": 1,
+              "barrettPersonaAdherence": 1,
+              "accuracy": 1,
+              "responseStructure": 1
+            },
+            "overallQuality1to10": 1,
+            "checks": {
+              "validJson": false,
+              "languageOk": false,
+              "noForbiddenTerms": true,
+              "contextAnchorHit": false,
+              "noNumericRating": true
+            },
+            "notes": [
+              "Request failed: MISSING_PROVIDER_API_KEY"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
