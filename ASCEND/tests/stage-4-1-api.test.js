@@ -8,7 +8,13 @@ const fs = require('fs');
 const path = require('path');
 
 const prodApp = require('../../server');
-const { createBarrettRouter, readConfig, scrubUnsafeRatings } = require('../../server/barrett');
+const {
+  createBarrettRouter,
+  readConfig,
+  getApiKey,
+  getSafeRuntimeDiagnostics,
+  scrubUnsafeRatings,
+} = require('../../server/barrett');
 
 function startServer(app) {
   return new Promise((resolve, reject) => {
@@ -78,7 +84,8 @@ async function test(name, fn) {
       const r = await reqJson(prod.baseUrl, '/api/barrett/health');
       assert.strictEqual(r.status, 200);
       assert.strictEqual(r.json.ok, true);
-      assert.strictEqual(r.json.model, 'gemini-4-hydrogen');
+      assert.strictEqual(r.json.model, 'gemini-3.5-flash-lite');
+      assert.strictEqual(r.json.analyzeModel, 'gemini-3.5-flash-lite');
       assert.strictEqual(r.json.multimodalSupported, true);
       assert.strictEqual(r.json.structuredOutputSupported, true);
       assert.strictEqual(r.json.privacy.serverPhotoRetention, false);
@@ -570,12 +577,38 @@ async function test(name, fn) {
 
     await test('Deprecated model env overrides fall back safely and scrubUnsafeRatings works', () => {
       const cfg = readConfig({ model: 'gemini-1.5-flash' });
-      assert.strictEqual(cfg.model, 'gemini-4-hydrogen');
+      assert.strictEqual(cfg.model, 'gemini-3.5-flash-lite');
+      assert.strictEqual(cfg.analyzeModel, 'gemini-3.5-flash-lite');
+      assert.strictEqual(readConfig({ thinkingLevel: 'MINIMAL' }).thinkingLevel, 'MINIMAL');
+      assert.strictEqual(getApiKey({ apiKey: ' "AIzaSyTestTrim12345" ' }), 'AIzaSyTestTrim12345');
+      const diag = getSafeRuntimeDiagnostics({ apiKey: 'AIzaSySecretNeverLeak123456' });
+      assert.strictEqual(diag.GEMINI_API_KEY_PRESENT, true);
+      assert.strictEqual(diag.model, 'gemini-3.5-flash-lite');
+      assert.ok(!JSON.stringify(diag).includes('AIzaSy'));
       assert.strictEqual(scrubUnsafeRatings('Rating: 8.5/10 overall'), 'Rating: — overall');
       assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', 'uploads')));
 
       const defaultCfg = readConfig({});
+      assert.strictEqual(defaultCfg.model, 'gemini-3.5-flash-lite');
+      assert.strictEqual(defaultCfg.analyzeModel, 'gemini-3.5-flash-lite');
       assert.ok(defaultCfg.timeoutMs > 0 && defaultCfg.timeoutMs < 30000, 'Default server timeout must stay strictly below client 30s timeout');
+    });
+
+    await test('Configured GEMINI_API_KEY reports available=true and gemini-3.5-flash-lite on /health without leaking key', async () => {
+      const configuredApp = express();
+      configuredApp.use('/api/barrett', createBarrettRouter({ apiKey: ' "AIzaSyFakeConfiguredKey123456" ' }));
+      const cfgSrv = await startServer(configuredApp);
+      try {
+        const h = await reqJson(cfgSrv.baseUrl, '/api/barrett/health');
+        assert.strictEqual(h.status, 200);
+        assert.strictEqual(h.json.ok, true);
+        assert.strictEqual(h.json.available, true);
+        assert.strictEqual(h.json.model, 'gemini-3.5-flash-lite');
+        assert.strictEqual(h.json.analyzeModel, 'gemini-3.5-flash-lite');
+        assert.ok(!h.text.includes('AIzaSy'));
+      } finally {
+        await cfgSrv.close();
+      }
     });
   } finally {
     await limSrv.close();

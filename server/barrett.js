@@ -7,6 +7,8 @@
 const express = require('express');
 const crypto = require('crypto');
 
+const DEFAULT_BARRETT_MODEL = 'gemini-3.5-flash-lite';
+
 const DEPRECATED_MODELS = new Set([
   'gemini-1.5-flash',
   'gemini-1.5-pro',
@@ -50,7 +52,7 @@ function parseRetryDelays(raw) {
 
 function readConfig(overrides = {}) {
   const rawModel = String(
-    overrides.model || process.env.BARRETT_MODEL || process.env.GEMINI_MODEL || 'gemini-4-hydrogen'
+    overrides.model || process.env.BARRETT_MODEL || process.env.GEMINI_MODEL || DEFAULT_BARRETT_MODEL
   ).trim();
   const rawAnalyzeModel = String(
     overrides.analyzeModel || process.env.BARRETT_ANALYZE_MODEL || rawModel
@@ -58,7 +60,7 @@ function readConfig(overrides = {}) {
 
   const validateModelName = (m) => {
     if (!/^[a-z0-9][a-z0-9.-]{2,64}$/i.test(m) || DEPRECATED_MODELS.has(m.toLowerCase())) {
-      return 'gemini-4-hydrogen';
+      return DEFAULT_BARRETT_MODEL;
     }
     return m;
   };
@@ -66,7 +68,7 @@ function readConfig(overrides = {}) {
   const rawThinking = String(
     overrides.thinkingLevel || process.env.BARRETT_THINKING_LEVEL || 'LOW'
   ).trim().toUpperCase();
-  const thinkingLevel = ['LOW', 'MEDIUM', 'HIGH'].includes(rawThinking) ? rawThinking : 'LOW';
+  const thinkingLevel = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'].includes(rawThinking) ? rawThinking : 'LOW';
 
   const rawTimeout = overrides.timeoutMs !== undefined ? Number(overrides.timeoutMs) : Number(process.env.BARRETT_TIMEOUT_MS);
   const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0
@@ -92,7 +94,22 @@ function readConfig(overrides = {}) {
 
 function getApiKey(overrides = {}) {
   const k = overrides.apiKey !== undefined ? overrides.apiKey : process.env.GEMINI_API_KEY;
-  return typeof k === 'string' ? k.trim() : '';
+  if (typeof k !== 'string') return '';
+  return k.trim().replace(/^["'](.*)["']$/, '$1').trim();
+}
+
+function getSafeRuntimeDiagnostics(overrides = {}) {
+  const cfg = readConfig(overrides);
+  const commitSha = String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
+  return {
+    GEMINI_API_KEY_PRESENT: Boolean(getApiKey(overrides)),
+    VERCEL_ENV: String(process.env.VERCEL_ENV || 'local').trim() || 'local',
+    VERCEL_GIT_COMMIT_SHA: commitSha ? commitSha.slice(0, 7) : 'none',
+    model: cfg.model,
+    analyzeModel: cfg.analyzeModel,
+    thinkingLevel: cfg.thinkingLevel,
+    route: '/api/barrett',
+  };
 }
 
 function cleanStr(val, maxLen) {
@@ -1536,6 +1553,9 @@ function createBarrettRouter(options = {}) {
 module.exports = {
   createBarrettRouter,
   readConfig,
+  getApiKey,
+  getSafeRuntimeDiagnostics,
+  DEFAULT_BARRETT_MODEL,
   createRateGuard,
   mapUpstreamError,
   buildBarrettSystemInstruction,
