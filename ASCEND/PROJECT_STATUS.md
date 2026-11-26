@@ -1,39 +1,61 @@
 # LOOKSMAX → ASCEND — PROJECT STATUS
 
-> **Current stage: 3.7 (Post-Audit Visual Alignment of Home & Progress, `LM.VERSION = 0.4.6-redesign`) complete. Barrett (4), AI (8-10), PWA (11) are NOT started.**
-> Stage 3.7 follows the comparative audit against `design-reference/ascend-ui-mockup.png` across mobile (`390×844`) and desktop (`1440×900`): restructures `Home` (open enlarged hero without Barrett, header without date, Level card without streak chip, `36px` single-line ellipsis tasks, desktop `780px` symmetry), moves secondary `Home` widgets into `#/tasks`, refines `Progress` to strictly 4 primary blocks (`7D/30D/90D/1Y` pills, clean smooth bezier chart without X-axis date labels and strictly real user data, `Серия`/`Уровень`, `Привычки` with `6px` bars) plus `#/progress/{photos,history,methods}` sub-routes, and keeps storage/XP/achievements/IndexedDB/backups completely untouched.
+> **Current stage: Vercel Preview Preparation (after Stage 4.3 Barrett Memory — locally built & verified in Node suites + HTTP smoke test; Preview deployment NOT yet run, NOT Production-ready, `LM.VERSION = 0.4.6-redesign`).**
+> Stage 3.7 follows the comparative audit against `design-reference/ascend-ui-mockup.png` across mobile (`390×844`) and desktop (`1440×900`): restructures `Home` (open enlarged hero with Barrett portrait, header without date, Level card without streak chip, `36px` readable tasks, desktop `780px` symmetry), moves secondary `Home` widgets into `#/tasks`, refines `Progress` to strictly 4 primary blocks (`7D/30D/90D/1Y` pills, clean smooth bezier chart without X-axis date labels and strictly real user data, `Серия`/`Уровень`, `Привычки`), and keeps storage/XP/achievements/IndexedDB/backups completely untouched.
 
 > Read this file first when continuing the project in a new session or account.
 > Do NOT rewrite the app from scratch and do NOT change the approved visual design.
 
 ## Project
-Gamified self-improvement web app (looks, skin, hair, body, style, grooming, health) inspired by Duolingo.
-Premium minimalist dark graphite & orange UI (plus WCAG-checked warm mineral light theme). v1 is personal-use, no backend, no account.
+Gamified self-improvement web app (looks, skin, hair, body, style, grooming, health) inspired by Duolingo, with AI mentor Barrett (`/api/barrett/*`).
+Premium minimalist dark graphite & orange UI (plus WCAG-checked warm mineral light theme). User progress/chats remain local-first in the browser (no account/DB), paired with a stateless Node/Express API proxy for Barrett AI.
 
 ## Tech
-Plain HTML + CSS + JavaScript. No build step, no dependencies. Fonts bundled in `fonts/` (OFL).
-Data: `localStorage` (progress, settings, avatar) + `IndexedDB` (photos).
+Frontend (`ASCEND/`): Plain HTML + CSS + JavaScript (no frontend bundler; fonts bundled in `ASCEND/fonts/`, OFL).
+Backend (root `server.js` + `server/`): Node.js + Express (`^5.3.0`) + `@google/genai` (`^3.6.1`) + REST fallback to Cloudflare Workers AI.
+Data: `localStorage` (`ascend.state`, `ascend.chat.v1`, `ascend.practice`) + `IndexedDB` (`ascend-photos`).
 
 ## File structure
 ```
-index.html            shell, loads scripts in order
-css/styles.css        all styling, design tokens in :root (dark + light theme)
-fonts/                Inter Variable (Cyrillic + Latin WOFF2), Barlow, Barlow Condensed, JetBrains Mono + licenses
-assets/cats/          7 dark studio category photographs
-assets/guides/        8 dark studio guide photographs (15 distinct photos mapped across 28 guides)
-js/i18n.js            i18n core: LM.t / LM.tn / LM.I18n (language saved in state.settings.language, default ru)
-js/i18n/ru.js, en.js  complete RU & EN dictionaries: all UI chrome, 7 categories, 28 guides, 28 interactive practices, 20 demos, 18 tasks, 16 achievements, sheets, toasts, errors
-js/backup.js          export/import: validation, atomic apply with rollback (LM.Backup)
-js/data.js            CONTENT ONLY: categories, 28 guides, 18 habit tasks, XP table, 16 achievements
-js/practices.js       Stage 3.3 interactive routines for all 28 guides, 20 articulated SVG motion demos, PracticeStore (`ascend.practice`)
-js/store.js           persistence: LM.Store (localStorage), LM.Photos (IndexedDB), image resize helper
-js/game.js            rules: XP, levels, streak, daily tasks (seeded by date), achievements, stats
-js/ui.js              helpers: SVG icons, escaping, toasts, level-up overlay, sheets, confirm dialog
-js/views.js           screens as HTML strings: home, guides, guide detail, interactive practice, progress, profile, settings
-js/app.js             hash router, practice timer loop, click delegation, settings sheets, photo flow, reminders, boot
-PROJECT_STATUS.md     this file
+package.json                        Node scripts, dependencies (express, @google/genai), and Vercel engines.node (22.x)
+.vercelignore                       Excludes archive/, tests/, exports/, docs/, design-reference/, benchmark/ from Vercel
+scripts/build-public.js             Reproducible build script: copies ASCEND runtime into public/ & verifies 51 static links
+public/                             Generated Vercel CDN static output (index.html, css/, js/, fonts/, assets/; ~7.0 MB)
+archive/aistudio-assets/            Archived legacy AI Studio uploads moved out of public/ (excluded from deploy)
+server.js                           Root Express entrypoint (exports app, mounts /api/barrett, serves ASCEND/ with public/ fallback)
+server/barrett.js                   Barrett API router (/health, /chat, /analyze, /guide), schemas, safety, rate guard
+server/ai-provider-router.js        Provider router (Gemini primary + opt-in Cloudflare Workers AI fallback + budget/retry)
+ASCEND/index.html                   Shell, loads frontend scripts in strict order using root-relative / paths
+ASCEND/css/styles.css               All styling, design tokens in :root (dark + light theme, /fonts/ URLs)
+ASCEND/fonts/                       Inter Variable (Cyrillic + Latin WOFF2), Barlow, Barlow Condensed, JetBrains Mono + licenses
+ASCEND/assets/avatars/              Barrett, Chico, Duo chat avatars + barrett-portrait.png (Home hero portrait)
+ASCEND/assets/brand/                Approved ASCEND/Barrett icons & favicons
+ASCEND/assets/cats/                 7 dark studio category photographs
+ASCEND/assets/guides/               8 dark studio guide photographs (mapped across 28 guides)
+ASCEND/design-reference/            Original design mockups & portraits (excluded from public/ & Vercel deploy)
+ASCEND/js/data.js                   CONTENT ONLY: categories, 28 guides, 18 habit tasks, XP table, 16 achievements
+ASCEND/js/practices.js              Stage 3.3 interactive routines for all 28 guides, PracticeStore (`ascend.practice`)
+ASCEND/js/demos.js                  Articulated SVG motion/posture demo renderer (`LM.demoSVG`)
+ASCEND/js/i18n.js                   i18n core: LM.t / LM.tn / LM.I18n (default ru)
+ASCEND/js/i18n/ru.js, en.js         Complete RU & EN dictionaries (UI, guides, practices, chat, errors)
+ASCEND/js/store.js                  Persistence: LM.Store (localStorage), LM.Photos (IndexedDB), image resize helper
+ASCEND/js/backup.js                 Export/import: validation, atomic apply with rollback (LM.Backup)
+ASCEND/js/game.js                   Rules: XP, levels, streak, daily tasks (seeded by date), achievements, stats
+ASCEND/js/ui.js                     Helpers: SVG icons, escaping, toasts, level-up overlay, sheets, confirm dialog
+ASCEND/js/views.js                  Main screens: home, tasks, guides, guide detail, practice, progress, profile, settings
+ASCEND/js/chat-store.js             Chat persistence (`ascend.chat.v1`): threads, pins, archive, Barrett long-term memory
+ASCEND/js/chat-api.js               Frontend proxy client (`/api/barrett/chat`, `/api/barrett/health`) + memory sync
+ASCEND/js/chat-views.js             Chat list, search, Barrett/Chico/Duo thread views, attachment & retry UI
+ASCEND/js/app.js                    Hash router, practice timer loop, click delegation, settings/consent sheets, boot
+ASCEND/tests/stage-1-*.test.js      Stage 1 Barrett intelligence & chat integration suites
+ASCEND/tests/stage-2-*.test.js      Stage 2 chat management & multimodal chat suites
+ASCEND/tests/stage-4-1-api.test.js  Stage 4.1 Barrett backend API, rate guard & safety suite
+ASCEND/tests/stage-4-2-cloudflare-fallback.test.js  Stage 4.2 Cloudflare opt-in fallback, timeout & isolation suite
+ASCEND/tests/stage-4-3-memory-and-resilience.test.js Stage 4.3 Barrett long-term memory & isolation suite
+ASCEND/tests/stage-a.test.js        Playwright v1->v3 migration suite (requires Playwright + OLD_ROOT)
+ASCEND/PROJECT_STATUS.md            This file
 ```
-Script order matters: data -> practices -> i18n/en,ru -> i18n -> store -> backup -> game -> ui -> views -> app. Everything hangs off `window.LM`.
+Script order in `ASCEND/index.html` matters: `data -> practices -> demos -> i18n/en,ru -> i18n -> store -> backup -> game -> ui -> views -> chat-store -> chat-api -> chat-views -> app`. Everything hangs off `window.LM`.
 
 ## Game rules (implemented in js/game.js, numbers in js/data.js `LM.XP`)
 - Level N -> N+1 costs `100 + 25*(N-1)` XP. Cumulative XP to reach level L = `100(L-1) + 12.5(L-1)(L-2)`.
@@ -57,7 +79,7 @@ Script order matters: data -> practices -> i18n/en,ru -> i18n -> store -> backup
 - Live headless Chromium verification in Playwright completed for Stage 3.7 (`390×844` and `1440×900`, Dark & Light, RU & EN) with zero console errors, zero failed requests, and zero horizontal overflow across `#/home`, `#/tasks`, `#/guides`, `#/guide/:id`, `#/progress`, `#/progress/{photos,history,methods}`, `#/profile`, and `#/settings`. Full `OLD_ROOT` migration suite (`tests/stage-a.test.js`) still requires `OLD_ROOT` path from the original LOOKSMAX 0.1.0 build.
 - i18n layer supports complete Russian (default) and English UI & catalog translation with dynamic switching and zero leftover untranslated UI strings.
 - Guide texts are educational summaries; they should be reviewed by a qualified person before any public release.
-- Default avatar is an initial on a circle badge; Barrett integration (Stage 4) and future character evolution remain unstarted.
+- Default user avatar is an initial on a circle badge (`LM.avatarHTML`); Barrett AI chat, multimodal image support, long-term memory, and Home portrait are implemented (Stages 4.1–4.3), while Chico/Duo backend AI wiring and character evolution remain future work.
 
 ## Storage schema v3 (Stage A + Stage 2)
 - Schema history: v1 = LOOKSMAX 0.1.0; v2 = language + history refs (Stage A); v3 = rebrand: untouched default nickname `LooksMaxxer` -> `Ascender` (a chosen nickname is never changed).
@@ -129,16 +151,42 @@ Script order matters: data -> practices -> i18n/en,ru -> i18n -> store -> backup
   - Live Chromium verification (`390×844` and `1440×900`, Dark & Light, RU & EN, empty & multi-day active history): zero console/network errors and zero horizontal overflow across all routes.
 
 ## Last completed stage
-Stage 2 — Chat UX & Management (message edit + AI reply truncation/regeneration, delete message/dialog with confirmation, rename, archive/restore, copy, duplicate-safe regenerate, global & in-thread search with match stepping, pin/unpin & pinned list sheet, 3-dot context menus, RU/EN localization, `ascend.chat.v1` persistence). Before: Stage 1 Chat Integration Foundation, Stage 4.1 Barrett Backend, Stage 3.7 (`LM.VERSION = 0.4.6-redesign`).
+Vercel Preview Preparation (following Stage 4.3 — Barrett Long-Term Memory & Strict Provider Isolation). Locally built and tested across Node suites and local HTTP smoke checks; Preview deployment NOT yet executed, NOT Production-ready.
 
-## Stage 2 (Chat UX & Management) — what changed
-- Extended `ASCEND/js/chat-store.js` (`ascend.chat.v1`) with `customTitle`, `archived`, `editedAt`, `getThreadTitle`, `editUserMessage` (with `truncateAfter` & pin pruning), `truncateAfter`, `isPinned`, `togglePin` (max 25), `getPinnedMessages`, `renameThread`, `archiveThread`, `deleteThread`, and `searchMessages`, while excluding archived threads from global `totalUnread()`.
-- Extended `ASCEND/js/chat-api.js` (`LM.ChatAPI`) with `editAndResendBarrett(userMsgId, newText)` and `regenerateBarrett(assistantMsgId)` reusing `dispatchBarrett`, Stage 1 `inFlight` duplicate-click locking, `AbortController` timeout, and retryable error recovery.
-- Extended `ASCEND/js/ui.js` (`dots`, `pin`, `copy`, `archive`, `restore` icons), `ASCEND/js/chat-views.js`, `ASCEND/js/app.js`, `ASCEND/css/styles.css`, and `ASCEND/js/i18n/{en,ru}.js` with 3-dot message & dialog context sheets, edit modal, rename modal, archive collapsible section + 1-tap restore, clipboard copy + fallback, pinned banner + pinned messages sheet (jump & unpin), and live global & in-thread search with XSS-safe `<mark class="chat-hl">` highlighting and focus preservation.
-- Added `ASCEND/tests/stage-2-chat-management.test.js`.
+## Stage 4.1, 4.2, 4.3 & Vercel Preview Preparation — what changed
+- `server.js` + `server/barrett.js`: Express API routes (`/api/barrett/health`, `/api/barrett/chat`, `/api/barrett/analyze`, `/api/barrett/guide`) with server-only `GEMINI_API_KEY`, client disconnect `AbortController`, zero photo retention, dual-layer in-memory rate guard (per-IP, per-clientId, concurrency, daily cost cap), `<18` minor safety guardrails (forbidding abrasive scrubs, strong acids, retinoids, extreme lifting/diets), Looksmaxxing community neutrality/respect rules, ASCEND module grounding, anti-hallucination guardrails (no fabricated commercial SKUs such as `Lux Max`), informal Russian `"ты"` tone anchors in both primary & compact fallback instructions, Russian declension matching in `PLAN_TRIGGER_RE`, static `SCHEMA_TYPE` constants + live-only SDK pre-warming, `validatorSpec` enforcement on `/chat`, `/analyze`, and `/guide`, non-secret `timeouts` visibility in `/api/barrett/health` & diagnostics, and `3600`-char chat reply limit.
+- `server/ai-provider-router.js`: Persona-independent AI router (primary `@google/genai`, default `gemini-3.5-flash-lite`; opt-in backup Cloudflare Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` via REST `result.response`) with hard total request budget, Vercel Hobby `8500 / 4500 / 3500` + `[250, 500]` defaults, bounded retries, JSON Schema 7 `response_format`, and non-PII lifecycle telemetry.
+- **Stage 4.3 — Barrett Long-Term Memory & Isolation (`ASCEND/js/chat-store.js`, `ASCEND/js/chat-api.js`, `server/ai-provider-router.js`, `server/barrett.js`)**:
+  - `ChatStore` (`ascend.chat.v1`): `memory.barrettSummary` (`<= 600` chars), sanitization, empty/sentinel overwrite guard, legacy compatibility, and `isSharedMemoryEnabled()` / `setSharedMemoryEnabled()` / `getBarrettSummary()` / `setBarrettSummary()` / `clearBarrettSummary()`.
+  - `ChatAPI.dispatchBarrett`: Transmits `memorySummary` and `updateSummary: true` only when `sharedEnabled` is enabled; saves `updatedSummary` only from Gemini when `sharedEnabled` remains `true` on completion.
+  - **Strict Isolation**: `fallbackResponseSchema` and `fallbackSystemInstruction` completely exclude `memorySummary`, `updateSummary`, and `updatedSummary` from Cloudflare payloads/schemas; `/analyze` and `/guide` never use Barrett memory or Cloudflare.
+- **Vercel Preview Preparation — what changed**:
+  - **Reproducible `public/` build (`scripts/build-public.js`, `package.json`, `.vercelignore`)**: Archived legacy `public/assets/aistudio/` into `archive/aistudio-assets/` (excluded via `.vercelignore`). `npm run build` runs syntax checks + `node scripts/build-public.js`, rebuilding clean `public/` (`~7.0 MB`: `index.html`, `css/`, `js/`, `fonts/`, `assets/`), excluding `tests/`, `exports/`, `docs/`, `design-reference/`, and `*.md`, and verifying all 51 runtime links.
+  - **Barrett portrait & root-relative paths (`ASCEND/assets/avatars/barrett-portrait.png`, `ASCEND/index.html`, `ASCEND/css/styles.css`, `ASCEND/js/views.js`, `ASCEND/js/chat-store.js`)**: Copied `barrett-01.png` -> `ASCEND/assets/avatars/barrett-portrait.png` (original preserved in `design-reference/`). Switched HTML, CSS `@font-face` (`url('/fonts/...')`), avatars, category images, guide images, and Home portrait to root-relative `/...` paths so local Express, Vercel `public/` CDN, and nested SPA fallback URLs all resolve assets reliably.
+  - **Single Express entrypoint (`server.js`)**: Kept root `server.js` zero-config Express entrypoint without adding `api/index.js` or `vercel.json`; uses `ASCEND/` locally with fallback to `public/`, and excludes `/api/` from SPA HTML fallback.
+  - **Vercel Hobby payload safety (`ASCEND/js/chat-api.js`, `server/barrett.js`, `ASCEND/js/i18n/{ru,en}.js`, `ASCEND/tests/stage-2-multimodal-chat.test.js`)**: Lowered max binary image size from `3,500,000` to `3,000,000` bytes (`3 MB`, keeping Base64 JSON under Vercel Hobby's `4.5 MB` request body cap) and `express.json` limit to `'4.5mb'`, with synchronized RU/EN messages and boundary tests (`3,000,000` accepted / `3,000,001+` rejected with `413 IMAGE_TOO_LARGE`).
+  - **Runtime pin (`package.json`)**: Added `"engines": { "node": "22.x" }` (verified on Node `v22.23.5` with `@google/genai` `^3.6.1` and `express` `^5.3.0`).
+- **Privacy & Consent (`ASCEND/js/store.js`, `app.js`, `chat-api.js`, `chat-views.js`, `i18n/{en,ru}.js`)**: `settings.privacy.cloudflareFallback` defaults to `false`; enabling requires `LM.confirm` disclosure; images, `/analyze`, and `/guide` never route to Cloudflare; `Chico` and `Duo` chats stay strictly local.
+- **Automated Verification Results (Post-Vercel-Preview-Preparation — 96/96 passing)**:
+  - `npm run build` (`compile_applet`): **passed** (`[build-public] Built public/ from ASCEND/ (51 runtime references verified, 0 broken, 0 design-reference links)`).
+  - `npm run lint` (`lint_applet`): **passed** (`node --check` on server, build script, and client JS modules).
+  - `ASCEND/tests/stage-4-3-memory-and-resilience.test.js`: **6 passed, 0 failed**.
+  - `ASCEND/tests/stage-4-1-api.test.js`: **18 passed, 0 failed**.
+  - `ASCEND/tests/stage-4-2-cloudflare-fallback.test.js`: **19 passed, 0 failed**.
+  - `ASCEND/tests/stage-1-barrett-intelligence.test.js`: **9 passed, 0 failed**.
+  - `ASCEND/tests/stage-1-chat-integration.test.js`: **13 passed, 0 failed**.
+  - `ASCEND/tests/stage-2-chat-management.test.js`: **9 passed, 0 failed**.
+  - `ASCEND/tests/stage-2-multimodal-chat.test.js`: **12 passed, 0 failed** (including exact `3,000,000` allowed & `>3,000,000` rejected boundary checks).
+  - `benchmark/tests/benchmark.test.js`: **10 passed, 0 failed**.
+  - **Local HTTP Smoke Test (`server.js` + `public/`)**: **passed** (`GET /`, SPA fallback `GET /nested/deep/route/here`, `/api/barrett/health`, validation on `/chat`, `/analyze`, `/guide`, `/api/barrett/unknown-route` -> `404`, all 51 static links -> `200` from both `server.js` and `public/`, forbidden files `tests/`/`exports/`/`design-reference/`/`PROJECT_STATUS.md`/`assets/aistudio/` -> `404` in `public/`).
+- **Explicitly NOT Executed / Pending**:
+  - **Vercel Preview deployment has NOT been executed yet** (and project is **NOT Production-ready**).
+  - **Playwright headless Chromium tests were NOT executed** (`playwright` is not installed in this environment; note legacy `ASCEND/tests/stage-chat-stage2.test.js` & `ASCEND/tests/server.js` mount `/new/` subpath and should be checked/updated if used with root-relative `/` paths).
+  - **Live HTTP requests with real Gemini/Cloudflare API keys** (`/api/barrett/chat`, `/api/barrett/analyze`, `/api/barrett/guide`) were **NOT executed** after these changes.
+  - **ZIP re-export & GitHub push** were **NOT executed**.
 
 ## Next step
-Proceed to Stage 3 — Shared Memory System & Onboarding Flows (after user review/approval).
+Run Vercel Preview deployment with live `GEMINI_API_KEY` + Cloudflare env vars, verify CDN static delivery (`public/`) vs Express `/api/barrett/*` routing on a live Preview URL (and confirm whether zero-config `server.js` needs a minimal `vercel.json` only if Preview routing shows a conflict), execute live `/analyze` + `/guide` + Playwright Chromium smoke checks, and then rebuild the export ZIP before any Production release.
 
 ## How to run
 `npm run dev` (starts `server.js` on port `3000`, serving `ASCEND/` and `/api/barrett/*`).

@@ -6,8 +6,22 @@
 
 const express = require('express');
 const crypto = require('crypto');
+const {
+  DEFAULT_GEMINI_MODEL,
+  DEFAULT_CLOUDFLARE_MODEL,
+  loadGenAISDK,
+  getGeminiApiKey,
+  getCloudflareCredentials,
+  isCloudflareConfigured,
+  readProviderRouterConfig,
+  sanitizeProviderErrorMsg,
+  extractSafeProviderMeta,
+  parseProviderJson,
+  mapProviderError,
+  createAIProviderRouter,
+} = require('./ai-provider-router');
 
-const DEFAULT_BARRETT_MODEL = 'gemini-3.5-flash-lite';
+const DEFAULT_BARRETT_MODEL = DEFAULT_GEMINI_MODEL;
 
 const DEPRECATED_MODELS = new Set([
   'gemini-1.5-flash',
@@ -21,6 +35,7 @@ const DEPRECATED_MODELS = new Set([
 ]);
 
 const EMOTIONS = ['neutral', 'happy', 'sad', 'excited'];
+const SCHEMA_TYPE = Object.freeze({ OBJECT: 'OBJECT', STRING: 'STRING', ARRAY: 'ARRAY' });
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const AGE_GROUPS = new Set(['under16', '16-17', '18-24', '25plus', 'unspecified']);
 const ANALYZE_FOCUS = new Set(['all', 'skin', 'hair', 'face', 'grooming', 'style', 'presentation']);
@@ -35,17 +50,17 @@ const GUIDE_CATEGORIES = new Set([
   'habits',
 ]);
 
-let sdkPromise = null;
-function loadGenAISDK() {
-  if (!sdkPromise) {
-    sdkPromise = import('@google/genai');
-  }
-  return sdkPromise;
-}
-
 function parseRetryDelays(raw) {
   if (Array.isArray(raw)) {
     return raw.map((n) => Math.max(0, Math.min(10000, Number(n) || 0))).slice(0, 3);
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .map((s) => Math.max(0, Math.min(10000, Number(s) || 0)))
+      .slice(0, 3);
   }
   return [500, 1000];
 }
@@ -65,49 +80,70 @@ function readConfig(overrides = {}) {
     return m;
   };
 
-  const rawThinking = String(
-    overrides.thinkingLevel || process.env.BARRETT_THINKING_LEVEL || 'LOW'
-  ).trim().toUpperCase();
-  const thinkingLevel = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'].includes(rawThinking) ? rawThinking : 'LOW';
-
-  const rawTimeout = overrides.timeoutMs !== undefined ? Number(overrides.timeoutMs) : Number(process.env.BARRETT_TIMEOUT_MS);
-  const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0
-    ? Math.max(250, Math.min(28000, rawTimeout))
-    : 24000;
+  const routerCfg = readProviderRouterConfig({
+    ...overrides,
+    thinkingLevel: overrides.thinkingLevel !== undefined ? overrides.thinkingLevel : process.env.BARRETT_THINKING_LEVEL,
+    timeoutMs: overrides.timeoutMs !== undefined ? overrides.timeoutMs : process.env.BARRETT_TIMEOUT_MS,
+    primaryFallbackTimeoutMs: overrides.primaryFallbackTimeoutMs !== undefined
+      ? overrides.primaryFallbackTimeoutMs
+      : process.env.BARRETT_PRIMARY_FALLBACK_TIMEOUT_MS,
+    cloudflareTimeoutMs: overrides.cloudflareTimeoutMs !== undefined
+      ? overrides.cloudflareTimeoutMs
+      : process.env.BARRETT_CLOUDFLARE_TIMEOUT_MS,
+    cloudflareModel: overrides.cloudflareModel !== undefined
+      ? overrides.cloudflareModel
+      : process.env.BARRETT_CLOUDFLARE_MODEL,
+    retryDelaysMs: overrides.retryDelaysMs !== undefined
+      ? overrides.retryDelaysMs
+      : process.env.BARRETT_RETRY_DELAYS_MS,
+    jitterRatio: overrides.jitterRatio !== undefined
+      ? overrides.jitterRatio
+      : process.env.BARRETT_RETRY_JITTER_RATIO,
+  });
 
   return {
     model: validateModelName(rawModel),
     analyzeModel: validateModelName(rawAnalyzeModel),
-    thinkingLevel,
-    timeoutMs,
-    retryDelaysMs: parseRetryDelays(overrides.retryDelaysMs),
+    thinkingLevel: routerCfg.thinkingLevel,
+    timeoutMs: routerCfg.timeoutMs,
+    primaryFallbackTimeoutMs: routerCfg.primaryFallbackTimeoutMs,
+    cloudflareTimeoutMs: routerCfg.cloudflareTimeoutMs,
+    cloudflareModel: routerCfg.cloudflareModel,
+    retryDelaysMs: routerCfg.retryDelaysMs,
+    jitterRatio: routerCfg.jitterRatio,
     windowMs: Math.max(5000, Number(overrides.windowMs || process.env.BARRETT_RATE_WINDOW_MS) || 60000),
     ipRpm: Math.max(1, Number(overrides.ipRpm || process.env.BARRETT_IP_RPM) || 20),
     userRpm: Math.max(1, Number(overrides.userRpm || process.env.BARRETT_USER_RPM) || 12),
     analyzeDailyUser: Math.max(1, Number(overrides.analyzeDailyUser || process.env.BARRETT_ANALYZE_DAILY_USER) || 10),
     dailyTotalCap: Math.max(1, Number(overrides.dailyTotalCap || process.env.BARRETT_DAILY_TOTAL_CAP) || 250),
     cooldownMs: Math.max(0, Number(overrides.cooldownMs ?? process.env.BARRETT_COOLDOWN_MS ?? 2500)),
-    maxImageBytes: Math.max(1024, Number(overrides.maxImageBytes || process.env.BARRETT_MAX_IMAGE_BYTES) || 3_500_000),
+    maxImageBytes: Math.max(1024, Math.min(3_000_000, Number(overrides.maxImageBytes || process.env.BARRETT_MAX_IMAGE_BYTES) || 3_000_000)),
     maxConcurrent: Math.max(1, Number(overrides.maxConcurrent || process.env.BARRETT_MAX_CONCURRENT) || 8),
   };
 }
 
 function getApiKey(overrides = {}) {
-  const k = overrides.apiKey !== undefined ? overrides.apiKey : process.env.GEMINI_API_KEY;
-  if (typeof k !== 'string') return '';
-  return k.trim().replace(/^["'](.*)["']$/, '$1').trim();
+  return getGeminiApiKey(overrides);
 }
 
 function getSafeRuntimeDiagnostics(overrides = {}) {
   const cfg = readConfig(overrides);
+  const cf = getCloudflareCredentials(overrides);
   const commitSha = String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
   return {
     GEMINI_API_KEY_PRESENT: Boolean(getApiKey(overrides)),
+    CLOUDFLARE_CONFIGURED: Boolean(cf.accountId && cf.apiToken),
     VERCEL_ENV: String(process.env.VERCEL_ENV || 'local').trim() || 'local',
     VERCEL_GIT_COMMIT_SHA: commitSha ? commitSha.slice(0, 7) : 'none',
     model: cfg.model,
     analyzeModel: cfg.analyzeModel,
+    cloudflareModel: cfg.cloudflareModel,
     thinkingLevel: cfg.thinkingLevel,
+    timeouts: {
+      timeoutMs: cfg.timeoutMs,
+      primaryFallbackTimeoutMs: cfg.primaryFallbackTimeoutMs,
+      cloudflareTimeoutMs: cfg.cloudflareTimeoutMs,
+    },
     route: '/api/barrett',
   };
 }
@@ -250,7 +286,7 @@ function describeBarrettSettings(settings) {
   ].join('\n');
 }
 
-const PLAN_TRIGGER_RE = /(?:^|[\s.,!?;"'()])(план|планы|планов|задач|задач[иуеа]|привычк|привыч[еиу]|прогресс|стрийк|распорядок|чек-?лист|гайд|гайды|рутин|утренн(?:ий|яя)|вечерн(?:ий|яя)|что\s+(?:мне\s+)?(?:сегодня\s+(?:нужно|надо|осталось|сделать|выполнить)|осталось\s+(?:сделать|выполнить)|(?:нужно|надо)\s+выполнить)|мои\s+дела|дела\s+на\s+сегодня|помоги\s+(?:с\s+(?:план|задач|привыч|рутин|уход|дел)|составить\s+(?:план|распорядок|рутин|гайд)|разобрать\s+(?:мои\s+)?(?:план|задач|привыч|дела))|составь\s+план|разбери\s+(?:мой\s+|мои\s+)?(?:план|привыч|задач)|кожа|кожи|кожу|прыщ|акне|от[её]к|уход\s+за|волос|бров|бород|осанк|отжиман|трениров|spf|tasks?|plans?|habits?|progress|streak|routine|checklist|schedule|guides?|skincare|skin\b|acne|puffy|grooming|hair|beard|brows|posture|workout|fitness)(?=$|[\s.,!?;"'():-])/i;
+const PLAN_TRIGGER_RE = /(?:^|[\s.,!?;"'()])(план(?:[ауеы]|ов|ам|ах)?|задач(?:[иуеа]|ам)?|привыч(?:к[аиуе]|ек|кам)?|прогресс[аеу]?|стрик(?:[аеу]|и)?|стрийк|распоряд(?:ок|ке|ка)|чек-?лист(?:[аеу]|ы)?|гайд(?:[ауеы]|ов)?|рутин(?:[ауеы])?|утренн(?:ий|яя|ее)|вечерн(?:ий|яя|ее)|что\s+(?:мне\s+)?(?:сегодня\s+(?:нужно|надо|осталось|сделать|выполнить)|осталось\s+(?:сделать|выполнить)|(?:нужно|надо)\s+выполнить)|мои\s+дела|дела\s+на\s+сегодня|помоги\s+(?:с\s+(?:план|задач|привыч|рутин|уход|дел)|составить\s+(?:план|распорядок|рутин|гайд)|разобрать\s+(?:мои\s+)?(?:план|задач|привыч|дела))|составь\s+план|разбери\s+(?:мой\s+|мои\s+)?(?:план|привыч|задач)|кожа|кожи|кожу|прыщ|акне|от[её]к|уход\s+за|волос|бров|бород|осанк|отжиман|трениров|spf|tasks?|plans?|habits?|progress|streak|routine|checklist|schedule|guides?|skincare|skin\b|acne|puffy|grooming|hair|beard|brows|posture|workout|fitness)(?=$|[\s.,!?;"'():-])/i;
 const FOLLOWUP_REF_RE = /(?:из\s+них|из\s+этого|какую\s+из|какой\s+пункт|эту\s+задач|с\s+чего\s+начать|which\s+one|from\s+the\s+list|first\s+one|next\s+task)/i;
 const PLAN_STOP_WORDS = new Set(['study', 'guide', 'daily', 'basic', 'basics', 'today', 'pending', 'done', 'изучить', 'гайд', 'день', 'сегодня', 'базовый']);
 
@@ -424,17 +460,30 @@ function buildBarrettSystemInstruction(lang, profile, mode, extra = {}) {
 
   const ageGuard = minor
     ? [
-        '- STRICT MINOR SAFETY (<18): Recommend ONLY safe, foundational habits: gentle cleanser, moisturizer, broad-spectrum SPF 30+, clean haircut/grooming, posture, sleep 8-9h, hydration, balanced nutrition, and age-appropriate bodyweight/moderate training.',
-        '- DO NOT recommend retinoids/strong chemical peels/medications, strict caloric deficits, extreme fasting, maximal heavy barbell lifting, cosmetic procedures, or supplements.',
+        '- STRICT MINOR SAFETY (<18): Recommend ONLY safe, gentle foundational habits: gentle pH-balanced cleanser, light non-comedogenic moisturizer, broad-spectrum SPF 30+, clean haircut/grooming, posture, sleep 8-9h, hydration, balanced nutrition, and age-appropriate bodyweight/moderate training.',
+        '- DO NOT recommend abrasive physical scrubs, strong acids, retinoids, strong chemical peels, medications, strict caloric deficits, extreme fasting, maximal heavy barbell lifting, cosmetic procedures, or supplements.',
       ].join('\n')
     : '- Keep all advice safe, evidence-aligned, and sustainable; suggest consulting a dermatologist/physician for persistent skin, hair-loss, or medical concerns.';
 
   const ascWorldLore = [
+    'ASCEND App Architecture & Reality:',
+    '- ASCEND (formerly called LOOKSMAX in v0.1.0) is a free, local-first gamified self-improvement web app (progress stored locally in browser storage/IndexedDB) — NOT a store, e-commerce brand, or seller of physical cosmetics/gadgets.',
+    '- Core ASCEND modules: Home («Главная» — daily XP & habit/guide checklist), Guides («Гайды» — 28 structured guides across 7 categories: Face, Skin, Hair, Body, Style, Grooming, Health), Practices («Практики» — 28 interactive routines with 20 SVG motion/posture demos), Progress («Прогресс» — XP/level curves, streaks / «серии», habit stats, local before/after photo check-ins), Profile («Профиль» — achievements & progression), and Chats («Чаты» — Barrett live AI mentor, Chico, and Duo Mode).',
+    '- Strict Product & Factuality Guardrail: ASCEND has ZERO paid commercial products or hardware lines (no "Lux Max" product, no SKU catalog). If asked about "Lux Max", state plainly without customer-support apologies that there is no commercial product called "Lux Max" in ASCEND (noting they might mean "LOOKSMAX" — the legacy app name / community — or an external item). If asked to compare "two ASCEND products", clarify that ASCEND has no commercial products and offer to compare actual ASCEND modules, guides, practices, or mentors (e.g., Barrett vs Chico) — NEVER invent fake products, specs, or prices.',
     'ASCEND Characters & Context:',
     '- Barrett (You): ASCEND main AI mentor (Fire Trainer: grooming, skincare, hair, habits, practical discipline). Confident, charismatic, intelligent, straightforward, able to analyze and compare options cleanly, uses occasional light irony—NOT a generic motivational bot.',
     '- Chico: A separate ASCEND character (Water Trainer: style, wardrobe, color harmony, aesthetic, charisma). Friendly, energetic, creative, less formal, supportive.',
     '- Duo Mode: Joint discussion mode in ASCEND where Barrett and Chico interact while keeping distinct personalities.',
     '- Disambiguation: Do NOT confuse ASCEND character Chico with real-world fashion model Francisco "Chico" Lachowski. If asked about Chico Lachowski / the model, answer accurately about the real person (without numeric attractiveness scores). If asked about Chico in ASCEND context, talk about the ASCEND trainer.',
+  ].join('\n');
+
+  const looksmaxxingCommunityRules = [
+    'Positive Looksmaxxing Community Attitude:',
+    '- Treat the Looksmaxxing community with warmth, genuine respect, and zero prejudice. Recognize that most participants discuss grooming, skincare, hair, style, aesthetics, self-improvement, and mutual encouragement—never judge the whole community by extreme posts.',
+    '- NEVER mock Looksmaxxing members, label the community toxic by default, use condescending stereotypes, treat interest in looksmaxxing as shameful, dismiss user experience because of community affiliation, or pit ASCEND against the Looksmaxxing community.',
+    '- Engage naturally with community terminology, trends, and methods, acknowledging useful ideas and practical experience directly on topic without lecturing about "controversial sides."',
+    '- Critical Thinking Without Arrogance: Separate respect for people from evidence and safety evaluation of specific methods. Critique unverified claims or risky practices calmly without demeaning people. Never support bullying, harsh appearance shaming, extreme/unsafe procedures, or tying human worth to aesthetic standards.',
+    '- Character Perspectives: Barrett knows community terminology and separates facts from myths objectively; Chico shows genuine creative interest in aesthetics, style, hair, and community vibe; in Duo Mode, both may share different viewpoints while keeping mutual respect for the community.',
   ].join('\n');
 
   const modeRules = mode === 'analyze'
@@ -463,12 +512,17 @@ function buildBarrettSystemInstruction(lang, profile, mode, extra = {}) {
     `Always respond in ${languageLabel}.`,
     `User nickname: ${profile.nickname}. ${ageLine} ${goalsLine}`.trim(),
     ascWorldLore,
+    looksmaxxingCommunityRules,
     modeRules,
     describeBarrettSettings(extra.barrettSettings),
     'Persona & Tone:',
     '- Confident, charismatic, sharp, witty, grounded—never robotic, corporate, or cheesy.',
+    '- When speaking Russian, ALWAYS address the user strictly on informal "ты" ("ты / тебя / у тебя / сделай") — NEVER use formal "вы/у вас/давайте" or customer-support phrases like "Извините" / "Я понимаю, что..." / "Я рад, что ты обратился". Use Russian ASCEND terms like «Гайды», «Практики», «Прогресс», «серия (стрик)».',
+    ...(lang === 'ru'
+      ? ['- Русский стиль Барретта (обязательно): пиши на «ты» («Начни с...», «Попробуй так», «У тебя в планах...», «Твой шаг на сегодня»). Не используй «Вы», «Ваш», «используйте», «помните» или канцелярские шаблоны.']
+      : []),
     '- Broad conversational intelligence: discuss any general topic (business, technology, culture, everyday life) naturally without forcing self-improvement clichés.',
-    '- Serious, direct, and structured when giving skincare, grooming, training, or analytical advice.',
+    '- Serious, direct, and cleanly structured (short numbered/bulleted steps when tackling multi-part or analytical questions).',
     'Non-Negotiable Safety & Accuracy Rules:',
     '- NEVER assign numerical attractiveness ratings (no "x/10", percentiles, or tier scores judging the user face).',
     '- NEVER humiliate, insult, body-shame, or create insecurities.',
@@ -497,6 +551,69 @@ function buildBarrettSystemInstruction(lang, profile, mode, extra = {}) {
   return parts.join('\n');
 }
 
+/* Data-minimized system instruction strictly for Cloudflare text-only fallback:
+   - Omits profile.nickname, profile.goals, memorySummary, and unrelated activePlans.
+   - Preserves anonymous <18 minor safety rules, anti-rating rules, Looksmaxxing community rules,
+     persona calibration, and conversation reasoning principles. */
+function buildCloudflareFallbackInstruction(lang, profile, extra = {}) {
+  const languageLabel = lang === 'en' ? 'English' : 'Russian';
+  const minor = isMinorProfile(profile);
+  const ageLine = minor
+    ? 'User status: MINOR (<18 — STRICT TEEN SAFETY APPLIES).'
+    : 'User status: general adult/unspecified.';
+
+  const ageGuard = minor
+    ? [
+        '- STRICT MINOR SAFETY (<18): Recommend ONLY safe gentle habits (gentle pH-balanced cleanser, light non-comedogenic moisturizer, SPF 30+, clean haircut/grooming, posture, 8-9h sleep, hydration, moderate bodyweight training).',
+        '- DO NOT recommend abrasive physical scrubs, strong acids, retinoids, chemical peels, medications, strict calorie deficits, extreme fasting, maximal heavy lifting, cosmetic procedures, or supplements.',
+      ].join('\n')
+    : '- Keep advice safe and evidence-aligned; suggest a dermatologist/doctor for persistent skin, hair-loss, or medical issues.';
+
+  const ascWorldLore = [
+    'ASCEND App Architecture & Reality:',
+    '- ASCEND (formerly LOOKSMAX v0.1.0) is a free local-first self-improvement web app (Главная, Гайды, Практики, Прогресс, Профиль, Чаты: Barrett, Chico, Duo) — NOT a store.',
+    '- Factuality: ASCEND has ZERO commercial products or SKUs (no "Lux Max" product). NEVER invent fake products, specs, or prices; if asked about "Lux Max" or comparing ASCEND products, state plainly there is no such commercial product and offer module/mentor comparisons instead.',
+    '- Characters: Barrett (you: grooming, skincare, hair, habits, crisp practical discipline); Chico (Water Trainer: style/aesthetics; do not confuse with model Chico Lachowski).',
+  ].join('\n');
+
+  const looksmaxxingCommunityRules = [
+    'Looksmaxxing Community: Respect participants warmly; evaluate methods objectively without mocking the community or bullying.',
+    '- NEVER assign numerical attractiveness ratings (no "x/10", percentiles, or tier scores) and never claim bone remodeling in adults (mewing/bonesmashing).',
+  ].join('\n');
+
+  const modeRules = [
+    'Mode & Brevity: Answer the user\'s actual message directly (never hijack small talk into skincare/task pitches). Remember conversation history.',
+    'Keep "reply" crisp, high-signal, and concise (3-4 short sentences or up to 4 brief bullets, ~90-130 words) so answers stay fast and focused.',
+    'When Relevant ActivePlans are provided below, reference those exact task titles and progress directly instead of telling the user to check a tab.',
+    'Set "profileQuote" to "" and "followUps" to [] unless clearly needed.',
+  ].join('\n');
+
+  const parts = [
+    'You are Barrett, ASCEND\'s confident, sharp, witty AI mentor.',
+    `Always respond in ${languageLabel}.`,
+    ageLine,
+    ascWorldLore,
+    looksmaxxingCommunityRules,
+    modeRules,
+    describeBarrettSettings(extra.barrettSettings),
+    '- When speaking Russian, ALWAYS use informal "ты" ("ты / тебя / у тебя / сделай"), NEVER "вы/у вас/Извините". Use ASCEND terms: «Гайды», «Практики», «Прогресс», «серия».',
+    ...(lang === 'ru'
+      ? ['- Русский стиль Барретта (обязательно): пиши на «ты» («Начни с...», «Попробуй так», «У тебя уже...», «Возьми мягкий гель»). Никогда не пиши «Вы», «Ваш», «используйте», «помните».']
+      : []),
+    ageGuard,
+    'Emotion enum: "neutral" (calm/general/analysis), "happy" (warmth/win/humor), "sad" (empathy/reset), "excited" (enthusiasm).',
+  ];
+
+  if (extra.plansIncluded && Array.isArray(extra.activePlans) && extra.activePlans.length) {
+    parts.push(
+      'Relevant ActivePlans:\n' +
+      extra.activePlans.map((p) => `- ${p.title} (${p.category || 'general'})${p.progressText ? ': ' + p.progressText : ''}`).join('\n')
+    );
+  }
+
+  return parts.join('\n');
+}
+
 function normalizeEmotion(val) {
   return EMOTIONS.includes(val) ? val : 'neutral';
 }
@@ -508,34 +625,11 @@ function scrubUnsafeRatings(text) {
 }
 
 function parseAiJson(rawText) {
-  if (typeof rawText !== 'string' || !rawText.trim()) {
-    const err = new Error('Empty AI response');
-    err.code = 'INVALID_AI_RESPONSE';
-    err.status = 502;
-    throw err;
-  }
-  const cleaned = rawText
-    .trim()
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-  try {
-    return JSON.parse(cleaned);
-  } catch (e) {
-    const err = new Error('Malformed JSON from AI');
-    err.code = 'INVALID_AI_RESPONSE';
-    err.status = 502;
-    throw err;
-  }
+  return parseProviderJson(rawText);
 }
 
-function sanitizeErrorMsg(raw) {
-  return String(raw || '')
-    .replace(/AIza[0-9A-Za-z_-]{10,}/g, '[REDACTED]')
-    .replace(/Bearer\s+[0-9A-Za-z._-]+/gi, 'Bearer [REDACTED]')
-    .replace(/key=[0-9A-Za-z_-]+/gi, 'key=[REDACTED]')
-    .slice(0, 240);
+function sanitizeErrorMsg(raw, secretValues = []) {
+  return sanitizeProviderErrorMsg(raw, secretValues);
 }
 
 function createRequestId() {
@@ -543,108 +637,7 @@ function createRequestId() {
 }
 
 function extractSafeUpstreamMeta(err) {
-  let upstreamStatus = Number(err?.status || err?.statusCode || err?.response?.status) || 0;
-  let apiStatus = '';
-  try {
-    const parsedMsg = JSON.parse(String(err?.message || ''));
-    if (parsedMsg && parsedMsg.error) {
-      if (!upstreamStatus && parsedMsg.error.code) upstreamStatus = Number(parsedMsg.error.code) || 0;
-      if (parsedMsg.error.status && /^[A-Z0-9_]{2,48}$/.test(String(parsedMsg.error.status))) {
-        apiStatus = String(parsedMsg.error.status);
-      }
-    }
-  } catch (_) {}
-  const errorType = String(err?.code || apiStatus || err?.name || 'Error').replace(/[^A-Za-z0-9_.-]/g, '').slice(0, 48) || 'Error';
-  return {
-    upstreamStatus: upstreamStatus || undefined,
-    errorType,
-    attempts: Number(err?.attempts) || undefined,
-  };
-}
-
-function mapUpstreamError(err) {
-  if (err && err.code && err.status && err.isBarrettError) return err;
-
-  let status = Number(err?.status || err?.statusCode || err?.response?.status) || 0;
-  let msg = sanitizeErrorMsg(err?.message || '');
-  let apiStatus = '';
-
-  // @google/genai ApiError often puts JSON {"error":{"code":...,"message":...,"status":...}} inside err.message
-  try {
-    const parsedMsg = JSON.parse(String(err?.message || ''));
-    if (parsedMsg && parsedMsg.error) {
-      if (!status && parsedMsg.error.code) status = Number(parsedMsg.error.code) || 0;
-      if (parsedMsg.error.status) apiStatus = String(parsedMsg.error.status);
-      if (parsedMsg.error.message) msg = sanitizeErrorMsg(parsedMsg.error.message);
-    }
-  } catch (_) {}
-
-  if ((err && err.name === 'AbortError') || err?.code === 'AI_TIMEOUT') {
-    return {
-      status: 504,
-      code: 'AI_TIMEOUT',
-      message: 'Barrett took too long to respond. Please try again.',
-      retryable: true,
-      retryAfterSec: 3,
-      errorType: 'AI_TIMEOUT',
-      upstreamStatus: status || 504,
-      attempts: Number(err?.attempts) || undefined,
-    };
-  }
-  if (status === 401 || status === 403 || /API_KEY_INVALID|PERMISSION_DENIED/i.test(msg) || /PERMISSION_DENIED/i.test(apiStatus)) {
-    return {
-      status: 503,
-      code: 'AI_AUTH_ERROR',
-      message: 'Barrett AI service credentials need attention in Settings > Secrets.',
-      retryable: false,
-      detail: apiStatus || `HTTP_${status || 'AUTH'}`,
-    };
-  }
-  if (status === 404 || /NOT_FOUND/i.test(msg) || /NOT_FOUND/i.test(apiStatus)) {
-    return {
-      status: 503,
-      code: 'AI_MODEL_UNAVAILABLE',
-      message: 'Configured Barrett AI model is currently unavailable.',
-      retryable: false,
-      detail: apiStatus || 'NOT_FOUND',
-    };
-  }
-  if (status === 429 || /RESOURCE_EXHAUSTED|rate.?limit|quota/i.test(msg) || /RESOURCE_EXHAUSTED/i.test(apiStatus)) {
-    return {
-      status: 429,
-      code: 'AI_QUOTA_EXCEEDED',
-      message: 'AI rate or quota limit reached. Please wait a moment and try again.',
-      retryable: true,
-      retryAfterSec: 15,
-      detail: apiStatus || 'RESOURCE_EXHAUSTED',
-    };
-  }
-  if (status === 400) {
-    return {
-      status: 400,
-      code: 'AI_BAD_REQUEST',
-      message: 'Request could not be processed by Barrett.',
-      retryable: false,
-      detail: msg ? `${apiStatus || 'INVALID_ARGUMENT'}: ${msg}` : (apiStatus || 'INVALID_ARGUMENT'),
-    };
-  }
-  if (err && err.code === 'INVALID_AI_RESPONSE') {
-    return {
-      status: 502,
-      code: 'INVALID_AI_RESPONSE',
-      message: 'Barrett returned an unexpected format. Please retry.',
-      retryable: true,
-      retryAfterSec: 2,
-    };
-  }
-  return {
-    status: 503,
-    code: 'AI_UNAVAILABLE',
-    message: 'Barrett is temporarily unreachable. Your saved ASCEND progress and plans remain available.',
-    retryable: true,
-    retryAfterSec: 5,
-    detail: `${apiStatus || err?.code || err?.name || 'UPSTREAM'}${status ? '_' + status : ''}${msg ? ': ' + msg : ''}`,
-  };
+  return extractSafeProviderMeta(err);
 }
 
 function sendError(res, status, code, message, extra = {}) {
@@ -802,12 +795,27 @@ function createRateGuard(cfg, nowFn = () => Date.now()) {
 }
 
 function createBarrettRouter(options = {}) {
+  if (typeof options.generateFn !== 'function') {
+    loadGenAISDK().catch(() => {});
+  }
   const router = express.Router();
   const cfg = readConfig(options.config);
   const guard = createRateGuard(cfg, options.nowFn);
   const logError = typeof options.logFn === 'function'
     ? options.logFn
     : (entry) => console.warn('[barrett:error]', JSON.stringify(entry));
+
+  const aiRouter = createAIProviderRouter({
+    apiKey: options.apiKey,
+    generateFn: options.generateFn,
+    cloudflare: options.cloudflare,
+    cloudflareFn: options.cloudflareFn,
+    fetchFn: options.fetchFn,
+    randomFn: options.randomFn,
+    config: cfg,
+    logFallbackFn: options.logFallbackFn,
+    logEventFn: options.logEventFn,
+  });
 
   function safeLogError({ requestId, route, status, code, errorType, upstreamStatus, attempts, durationMs }) {
     try {
@@ -825,15 +833,15 @@ function createBarrettRouter(options = {}) {
     } catch (_) {}
   }
 
-  // Scoped JSON parser strictly for Barrett API routes (keeps payload & cost bounded)
-  router.use(express.json({ limit: '5mb', strict: true }));
+  // Scoped JSON parser strictly for Barrett API routes (keeps payload under Vercel Hobby 4.5MB limit)
+  router.use(express.json({ limit: '4.5mb', strict: true }));
 
   router.use((err, req, res, next) => {
     const requestId = createRequestId();
     const route = `/api/barrett${req.path || ''}`;
     if (err && err.type === 'entity.too.large') {
       safeLogError({ requestId, route, status: 413, code: 'PAYLOAD_TOO_LARGE', errorType: 'PayloadTooLargeError' });
-      return sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Payload exceeds the 5MB safety limit.', { requestId });
+      return sendError(res, 413, 'PAYLOAD_TOO_LARGE', 'Payload exceeds the 4.5MB safety limit.', { requestId });
     }
     if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
       safeLogError({ requestId, route, status: 400, code: 'INVALID_JSON', errorType: 'SyntaxError' });
@@ -842,183 +850,25 @@ function createBarrettRouter(options = {}) {
     return next(err);
   });
 
-  function sleepWithSignal(ms, signal) {
-    if (ms <= 0) return Promise.resolve();
-    return new Promise((resolve, reject) => {
-      if (signal && signal.aborted) {
-        const aErr = new Error('Aborted');
-        aErr.name = 'AbortError';
-        reject(aErr);
-        return;
-      }
-      let timer = null;
-      const onAbort = () => {
-        if (timer) clearTimeout(timer);
-        timer = null;
-        if (signal) signal.removeEventListener('abort', onAbort);
-        const aErr = new Error('Aborted');
-        aErr.name = 'AbortError';
-        reject(aErr);
-      };
-      timer = setTimeout(() => {
-        timer = null;
-        if (signal) signal.removeEventListener('abort', onAbort);
-        resolve();
-      }, ms);
-      if (signal) signal.addEventListener('abort', onAbort, { once: true });
-    });
-  }
-
-  async function invokeModel({ model, contents, systemInstruction, responseSchema, clientSignal }) {
-    const apiKey = getApiKey(options);
-    if (!apiKey && typeof options.generateFn !== 'function') {
-      const err = new Error('GEMINI_API_KEY is not configured on the server.');
-      err.status = 503;
-      err.code = 'AI_NOT_CONFIGURED';
-      err.isBarrettError = true;
-      throw err;
-    }
-
-    const totalBudgetMs = cfg.timeoutMs;
-    const deadline = Date.now() + totalBudgetMs;
-    const outerController = new AbortController();
-    let timedOut = false;
-
-    const onClientAbort = () => {
-      outerController.abort();
-    };
-    if (clientSignal) {
-      if (clientSignal.aborted) {
-        outerController.abort();
-      } else {
-        clientSignal.addEventListener('abort', onClientAbort, { once: true });
-      }
-    }
-
-    const deadlineTimer = setTimeout(() => {
-      timedOut = true;
-      outerController.abort();
-    }, totalBudgetMs);
-
-    const executeAttempt = async () => {
-      if (outerController.signal.aborted) {
-        const err = new Error(timedOut ? 'Gemini request timed out' : 'Client aborted request');
-        if (timedOut) err.code = 'AI_TIMEOUT';
-        else err.name = 'AbortError';
-        throw err;
-      }
-
-      const attemptController = new AbortController();
-      const onOuterAbort = () => attemptController.abort();
-      outerController.signal.addEventListener('abort', onOuterAbort, { once: true });
-
-      const abortPromise = new Promise((_, reject) => {
-        if (attemptController.signal.aborted) {
-          const err = new Error(timedOut ? 'Gemini request timed out' : 'Request aborted');
-          if (timedOut) err.code = 'AI_TIMEOUT';
-          else err.name = 'AbortError';
-          reject(err);
-          return;
-        }
-        attemptController.signal.addEventListener('abort', () => {
-          const err = new Error(timedOut ? 'Gemini request timed out' : 'Request aborted');
-          if (timedOut) err.code = 'AI_TIMEOUT';
-          else err.name = 'AbortError';
-          reject(err);
-        }, { once: true });
-      });
-
-      try {
-        const callPromise = (async () => {
-          if (typeof options.generateFn === 'function') {
-            return options.generateFn({
-              model,
-              contents,
-              systemInstruction,
-              responseSchema,
-              thinkingLevel: cfg.thinkingLevel,
-              abortSignal: attemptController.signal,
-            });
-          }
-          const { GoogleGenAI, ThinkingLevel } = await loadGenAISDK();
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: { headers: { 'User-Agent': 'aistudio-build' } },
-          });
-          const levelEnum = ThinkingLevel[cfg.thinkingLevel] || ThinkingLevel.LOW;
-          const response = await ai.models.generateContent({
-            model,
-            contents,
-            config: {
-              systemInstruction,
-              responseMimeType: 'application/json',
-              responseSchema,
-              thinkingConfig: { thinkingLevel: levelEnum },
-              abortSignal: attemptController.signal,
-            },
-          });
-          return { text: response.text };
-        })();
-
-        return await Promise.race([callPromise, abortPromise]);
-      } finally {
-        outerController.signal.removeEventListener('abort', onOuterAbort);
-      }
-    };
-
-    const retryDelays = cfg.retryDelaysMs;
-    const minAttemptMarginMs = Math.min(1200, Math.floor(totalBudgetMs * 0.2));
-    let attempts = 0;
-
-    try {
-      while (true) {
-        attempts += 1;
-        try {
-          return await executeAttempt();
-        } catch (err) {
-          if (timedOut || outerController.signal.aborted) {
-            const timeoutErr = err && (err.code === 'AI_TIMEOUT' || err.name === 'AbortError')
-              ? err
-              : Object.assign(new Error('Gemini request timed out'), { code: 'AI_TIMEOUT' });
-            timeoutErr.attempts = attempts;
-            throw timeoutErr;
-          }
-          const status = Number(err?.status || err?.statusCode || err?.response?.status || 0);
-          const transient = status === 502 || status === 503 || status === 504;
-          const retryIdx = attempts - 1;
-          const delayMs = retryIdx < retryDelays.length ? retryDelays[retryIdx] : null;
-          const remainingMs = deadline - Date.now();
-          if (!transient || delayMs === null || remainingMs <= delayMs + minAttemptMarginMs) {
-            if (err && typeof err === 'object') err.attempts = attempts;
-            throw err;
-          }
-          await sleepWithSignal(delayMs, outerController.signal);
-        }
-      }
-    } catch (err) {
-      if (timedOut && (!err || err.code !== 'AI_TIMEOUT')) {
-        const timeoutErr = new Error('Gemini request timed out');
-        timeoutErr.code = 'AI_TIMEOUT';
-        timeoutErr.attempts = attempts;
-        throw timeoutErr;
-      }
-      throw err;
-    } finally {
-      clearTimeout(deadlineTimer);
-      if (clientSignal) clientSignal.removeEventListener('abort', onClientAbort);
-    }
-  }
-
   /* ───────── GET /api/barrett/health ───────── */
   router.get('/health', (req, res) => {
     const hasKey = Boolean(getApiKey(options) || typeof options.generateFn === 'function');
+    const cfConfigured = aiRouter.isCloudflareConfigured();
     return res.json({
       ok: true,
-      available: hasKey,
+      configured: hasKey,
       model: cfg.model,
       analyzeModel: cfg.analyzeModel,
       multimodalSupported: true,
       structuredOutputSupported: true,
+      fallback: {
+        provider: 'cloudflare-workers-ai',
+        configured: cfConfigured,
+        model: cfg.cloudflareModel,
+        textChatOnly: true,
+        photosNeverSent: true,
+        consentRequired: true,
+      },
       limits: {
         ipRpm: cfg.ipRpm,
         userRpm: cfg.userRpm,
@@ -1026,9 +876,15 @@ function createBarrettRouter(options = {}) {
         dailyTotalCap: cfg.dailyTotalCap,
         maxImageBytes: cfg.maxImageBytes,
       },
+      timeouts: {
+        timeoutMs: cfg.timeoutMs,
+        primaryFallbackTimeoutMs: cfg.primaryFallbackTimeoutMs,
+        cloudflareTimeoutMs: cfg.cloudflareTimeoutMs,
+      },
       privacy: {
         serverPhotoRetention: false,
         explicitConsentRequired: true,
+        fallbackConsentRequired: true,
       },
     });
   });
@@ -1107,18 +963,28 @@ function createBarrettRouter(options = {}) {
     };
     res.on('close', onResClose);
 
+    const allowCloudflareFallback = body.allowCloudflareFallback === true;
+    const hasImage = Boolean(validatedImage);
+
     let succeeded = false;
     try {
-      const { Type } = await loadGenAISDK();
+      const Type = SCHEMA_TYPE;
       const plansIncluded = isActivePlansRelevant(message, activePlans, messages);
       const chatContents = buildChatContents({ messages, message, image: validatedImage, lang });
       const systemInstruction = buildBarrettSystemInstruction(lang, profile, 'chat', {
         barrettSettings,
         memorySummary,
         activePlans: plansIncluded ? activePlans : [],
-        hasImage: Boolean(validatedImage),
+        hasImage,
         updateSummary,
       });
+      const fallbackSystemInstruction = !hasImage
+        ? buildCloudflareFallbackInstruction(lang, profile, {
+            barrettSettings,
+            activePlans: plansIncluded ? activePlans : [],
+            plansIncluded,
+          })
+        : '';
 
       const responseSchema = {
         type: Type.OBJECT,
@@ -1139,16 +1005,42 @@ function createBarrettRouter(options = {}) {
         required: ['emotion', 'reply'],
       };
 
-      const aiRes = await invokeModel({
+      const fallbackResponseSchema = {
+        type: Type.OBJECT,
+        properties: {
+          emotion: responseSchema.properties.emotion,
+          reply: responseSchema.properties.reply,
+          profileQuote: responseSchema.properties.profileQuote,
+          followUps: responseSchema.properties.followUps,
+        },
+        required: ['emotion', 'reply'],
+      };
+
+      const aiRes = await aiRouter.generate({
+        task: 'chat',
+        characterId: 'barrett',
+        requestId,
+        route,
         model: cfg.model,
         contents: chatContents,
         systemInstruction,
+        fallbackSystemInstruction,
         responseSchema,
+        fallbackResponseSchema,
+        validatorSpec: {
+          requiredFields: ['emotion', 'reply'],
+          nonEmptyStrings: ['reply'],
+          enumFields: { emotion: EMOTIONS },
+          optionalStringArrayFields: ['followUps'],
+        },
+        allowFallback: !hasImage,
+        userConsent: allowCloudflareFallback,
+        hasImage,
         clientSignal: disconnectController.signal,
       });
 
-      const parsed = parseAiJson(aiRes.text);
-      const reply = scrubUnsafeRatings(cleanStr(parsed.reply, 2400));
+      const parsed = aiRes.data || parseAiJson(aiRes.text);
+      const reply = scrubUnsafeRatings(cleanStr(parsed.reply, 3600));
       if (!reply) {
         safeLogError({ requestId, route, status: 502, code: 'INVALID_AI_RESPONSE', errorType: 'EmptyReply', durationMs: Date.now() - startedAt });
         return sendError(res, 502, 'INVALID_AI_RESPONSE', 'Barrett returned an empty reply.', { retryable: true, retryAfterSec: 2, requestId });
@@ -1164,20 +1056,27 @@ function createBarrettRouter(options = {}) {
           followUps: Array.isArray(parsed.followUps)
             ? parsed.followUps.map((q) => cleanStr(q, 90)).filter(Boolean).slice(0, 3)
             : [],
-          updatedSummary: updateSummary ? cleanStr(parsed.updatedSummary, 600) : '',
+          updatedSummary: (!aiRes.fallbackUsed && updateSummary) ? cleanStr(parsed.updatedSummary, 600) : '',
         },
         meta: {
-          model: cfg.model,
+          model: aiRes.model,
+          provider: aiRes.provider,
+          fallbackUsed: Boolean(aiRes.fallbackUsed),
+          ...(aiRes.fallbackUsed && aiRes.fallbackReason ? { fallbackReason: aiRes.fallbackReason } : {}),
+          durationMs: Number.isFinite(aiRes.durationMs) ? aiRes.durationMs : Math.max(0, Date.now() - startedAt),
           requestId,
           privacy: {
             retained: false,
             photoRetainedOnServer: false,
-            thirdPartyAiUsed: Boolean(validatedImage),
+            thirdPartyAiUsed: Boolean(validatedImage) || Boolean(aiRes.fallbackUsed),
+            fallbackProvider: aiRes.fallbackUsed ? aiRes.provider : null,
+            textSentToFallbackProvider: Boolean(aiRes.fallbackUsed),
+            imagesSentToFallbackProvider: false,
           },
         },
       });
     } catch (err) {
-      const mapped = mapUpstreamError(err);
+      const mapped = mapProviderError(err, { secretValues: aiRouter.getSecretsList() });
       const meta = extractSafeUpstreamMeta(err);
       safeLogError({
         requestId,
@@ -1236,7 +1135,6 @@ function createBarrettRouter(options = {}) {
     const profile = sanitizeProfile(body.profile);
     const focus = ANALYZE_FOCUS.has(body.focus) ? body.focus : 'all';
     const note = cleanStr(body.note, 500);
-    const memorySummary = cleanStr(body.memorySummary, 1200);
 
     const payloadHash = crypto
       .createHash('sha256')
@@ -1263,10 +1161,9 @@ function createBarrettRouter(options = {}) {
 
     let succeeded = false;
     try {
-      const { Type } = await loadGenAISDK();
+      const Type = SCHEMA_TYPE;
       const promptParts = [
         `Analyze this user-submitted photo for constructive looksmaxing & grooming coaching (focus: ${focus}).`,
-        memorySummary ? `User context summary: ${memorySummary}` : '',
         note ? `User question/note: ${note}` : '',
         'Cover visible aspects across skin, hair, face framing/harmony, grooming, style, and presentation/posture.',
         'Do NOT give any numerical attractiveness score (no x/10). Provide practical, safe, age-appropriate steps.',
@@ -1305,7 +1202,11 @@ function createBarrettRouter(options = {}) {
         required: ['emotion', 'reply', 'observations', 'recommendedGuide', 'followUps', 'profileQuote'],
       };
 
-      const aiRes = await invokeModel({
+      const aiRes = await aiRouter.generate({
+        task: 'analyze',
+        characterId: 'barrett',
+        requestId,
+        route,
         model: cfg.analyzeModel,
         contents: {
           parts: [
@@ -1315,10 +1216,19 @@ function createBarrettRouter(options = {}) {
         },
         systemInstruction: buildBarrettSystemInstruction(lang, profile, 'analyze'),
         responseSchema,
+        validatorSpec: {
+          requiredFields: ['emotion', 'reply', 'observations', 'recommendedGuide'],
+          nonEmptyStrings: ['reply'],
+          enumFields: { emotion: EMOTIONS },
+          optionalStringArrayFields: ['followUps'],
+        },
+        allowFallback: false,
+        userConsent: false,
+        hasImage: true,
         clientSignal: disconnectController.signal,
       });
 
-      const parsed = parseAiJson(aiRes.text);
+      const parsed = aiRes.data || parseAiJson(aiRes.text);
       const obs = parsed.observations && typeof parsed.observations === 'object' ? parsed.observations : {};
       const rec = parsed.recommendedGuide && typeof parsed.recommendedGuide === 'object' ? parsed.recommendedGuide : {};
 
@@ -1351,12 +1261,14 @@ function createBarrettRouter(options = {}) {
         },
         meta: {
           model: cfg.analyzeModel,
+          provider: aiRes.provider,
+          fallbackUsed: false,
           requestId,
           privacy: { photoRetainedOnServer: false, thirdPartyAiUsed: true },
         },
       });
     } catch (err) {
-      const mapped = mapUpstreamError(err);
+      const mapped = mapProviderError(err, { secretValues: aiRouter.getSecretsList() });
       const meta = extractSafeUpstreamMeta(err);
       safeLogError({
         requestId,
@@ -1398,7 +1310,6 @@ function createBarrettRouter(options = {}) {
       return sendError(res, 400, 'EMPTY_GOAL', 'A goal or adjustment request is required to build a guide.', { requestId });
     }
 
-    const memorySummary = cleanStr(body.memorySummary, 1200);
     const existingGuide = body.existingGuide && typeof body.existingGuide === 'object'
       ? {
           title: cleanStr(body.existingGuide.title, 120),
@@ -1436,10 +1347,9 @@ function createBarrettRouter(options = {}) {
 
     let succeeded = false;
     try {
-      const { Type } = await loadGenAISDK();
+      const Type = SCHEMA_TYPE;
       const promptParts = [
         `Create or refine a realistic, safe personalized guide in category "${category}".`,
-        memorySummary ? `User memory summary: ${memorySummary}` : '',
         existingGuide && existingGuide.title
           ? `Current guide being adjusted: "${existingGuide.title}"\nCurrent steps:\n${existingGuide.steps.map((s) => `- [${s.done ? 'done' : 'todo'}] ${s.text}`).join('\n')}`
           : '',
@@ -1479,15 +1389,27 @@ function createBarrettRouter(options = {}) {
         required: ['emotion', 'reply', 'guide', 'profileQuote'],
       };
 
-      const aiRes = await invokeModel({
+      const aiRes = await aiRouter.generate({
+        task: 'guide',
+        characterId: 'barrett',
+        requestId,
+        route,
         model: cfg.model,
         contents: promptParts,
         systemInstruction: buildBarrettSystemInstruction(lang, profile, 'guide'),
         responseSchema,
+        validatorSpec: {
+          requiredFields: ['emotion', 'reply', 'guide'],
+          nonEmptyStrings: ['reply'],
+          enumFields: { emotion: EMOTIONS },
+        },
+        allowFallback: false,
+        userConsent: false,
+        hasImage: false,
         clientSignal: disconnectController.signal,
       });
 
-      const parsed = parseAiJson(aiRes.text);
+      const parsed = aiRes.data || parseAiJson(aiRes.text);
       const g = parsed.guide && typeof parsed.guide === 'object' ? parsed.guide : {};
       const steps = Array.isArray(g.steps)
         ? g.steps
@@ -1520,10 +1442,10 @@ function createBarrettRouter(options = {}) {
           },
           profileQuote: scrubUnsafeRatings(cleanStr(parsed.profileQuote, 180)),
         },
-        meta: { model: cfg.model, requestId },
+        meta: { model: cfg.model, provider: aiRes.provider, fallbackUsed: false, requestId },
       });
     } catch (err) {
-      const mapped = mapUpstreamError(err);
+      const mapped = mapProviderError(err, { secretValues: aiRouter.getSecretsList() });
       const meta = extractSafeUpstreamMeta(err);
       safeLogError({
         requestId,
@@ -1554,13 +1476,18 @@ module.exports = {
   createBarrettRouter,
   readConfig,
   getApiKey,
+  getCloudflareCredentials,
+  isCloudflareConfigured,
   getSafeRuntimeDiagnostics,
   DEFAULT_BARRETT_MODEL,
+  DEFAULT_CLOUDFLARE_MODEL,
   createRateGuard,
-  mapUpstreamError,
   buildBarrettSystemInstruction,
+  buildCloudflareFallbackInstruction,
   buildChatContents,
   isActivePlansRelevant,
   sanitizeBarrettSettings,
   scrubUnsafeRatings,
+  validateChatImagePayload,
 };
+

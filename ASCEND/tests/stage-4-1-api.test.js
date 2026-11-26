@@ -84,10 +84,17 @@ async function test(name, fn) {
       const r = await reqJson(prod.baseUrl, '/api/barrett/health');
       assert.strictEqual(r.status, 200);
       assert.strictEqual(r.json.ok, true);
+      assert.strictEqual(typeof r.json.configured, 'boolean');
+      assert.ok(!('available' in r.json), 'Must report configured, not available');
       assert.strictEqual(r.json.model, 'gemini-3.5-flash-lite');
       assert.strictEqual(r.json.analyzeModel, 'gemini-3.5-flash-lite');
       assert.strictEqual(r.json.multimodalSupported, true);
       assert.strictEqual(r.json.structuredOutputSupported, true);
+      assert.strictEqual(r.json.fallback.provider, 'cloudflare-workers-ai');
+      assert.strictEqual(typeof r.json.fallback.configured, 'boolean');
+      assert.strictEqual(r.json.fallback.model, '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+      assert.strictEqual(r.json.fallback.textChatOnly, true);
+      assert.strictEqual(r.json.fallback.photosNeverSent, true);
       assert.strictEqual(r.json.privacy.serverPhotoRetention, false);
       assert.strictEqual(r.json.privacy.explicitConsentRequired, true);
       assert.ok(!r.text.includes('AIza'), 'Must never expose API key');
@@ -130,10 +137,11 @@ async function test(name, fn) {
   unconfiguredApp.use('/api/barrett', createBarrettRouter({ apiKey: '' }));
   const uncfg = await startServer(unconfiguredApp);
   try {
-    await test('Unconfigured GEMINI_API_KEY reports available=false and 503 AI_NOT_CONFIGURED on chat/guide/analyze', async () => {
+    await test('Unconfigured GEMINI_API_KEY reports configured=false and 503 AI_NOT_CONFIGURED on chat/guide/analyze', async () => {
       const h = await reqJson(uncfg.baseUrl, '/api/barrett/health');
       assert.strictEqual(h.status, 200);
-      assert.strictEqual(h.json.available, false);
+      assert.strictEqual(h.json.configured, false);
+      assert.ok(!('available' in h.json));
 
       const c = await reqJson(uncfg.baseUrl, '/api/barrett/chat', {
         method: 'POST',
@@ -594,18 +602,25 @@ async function test(name, fn) {
       assert.ok(defaultCfg.timeoutMs > 0 && defaultCfg.timeoutMs < 30000, 'Default server timeout must stay strictly below client 30s timeout');
     });
 
-    await test('Configured GEMINI_API_KEY reports available=true and gemini-3.5-flash-lite on /health without leaking key', async () => {
+    await test('Configured GEMINI_API_KEY reports configured=true and gemini-3.5-flash-lite on /health without leaking key', async () => {
       const configuredApp = express();
-      configuredApp.use('/api/barrett', createBarrettRouter({ apiKey: ' "AIzaSyFakeConfiguredKey123456" ' }));
+      configuredApp.use('/api/barrett', createBarrettRouter({
+        apiKey: ' "AIzaSyFakeConfiguredKey123456" ',
+        cloudflare: { accountId: 'cf_secret_acc_999', apiToken: 'cf_secret_tok_999' },
+      }));
       const cfgSrv = await startServer(configuredApp);
       try {
         const h = await reqJson(cfgSrv.baseUrl, '/api/barrett/health');
         assert.strictEqual(h.status, 200);
         assert.strictEqual(h.json.ok, true);
-        assert.strictEqual(h.json.available, true);
+        assert.strictEqual(h.json.configured, true);
+        assert.ok(!('available' in h.json));
+        assert.strictEqual(h.json.fallback.configured, true);
         assert.strictEqual(h.json.model, 'gemini-3.5-flash-lite');
         assert.strictEqual(h.json.analyzeModel, 'gemini-3.5-flash-lite');
         assert.ok(!h.text.includes('AIzaSy'));
+        assert.ok(!h.text.includes('cf_secret_acc_999'));
+        assert.ok(!h.text.includes('cf_secret_tok_999'));
       } finally {
         await cfgSrv.close();
       }

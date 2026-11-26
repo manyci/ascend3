@@ -496,11 +496,79 @@
       });
     },
     privacy() {
-      const p = LM.Store.get().settings.privacy;
-      LM.sheet(T('sheet.privacyTitle'), toggleRow('t-blur', T('sheet.privacyBlurToggle'), T('sheet.privacyBlurSub'), p.blurPhotos) +
-        '<div class="note">' + T('sheet.privacyList') + '</div>', body => {
-        bindToggle(body, 't-blur', on => LM.Store.update(s => { s.settings.privacy.blurPhotos = on; }));
-      });
+      const p = (LM.Store.get().settings && LM.Store.get().settings.privacy) || { blurPhotos: true, cloudflareFallback: false };
+      const fallbackOn = p.cloudflareFallback === true;
+      const memoryOn = LM.ChatStore && typeof LM.ChatStore.isSharedMemoryEnabled === 'function'
+        ? LM.ChatStore.isSharedMemoryEnabled()
+        : true;
+      LM.sheet(
+        T('sheet.privacyTitle'),
+        toggleRow('t-blur', T('sheet.privacyBlurToggle'), T('sheet.privacyBlurSub'), Boolean(p.blurPhotos)) +
+        toggleRow('t-barrett-memory', T('sheet.privacyMemoryToggle'), T('sheet.privacyMemorySub'), memoryOn) +
+        '<p class="note" id="privacy-mem-note">' + E(T('sheet.privacyMemoryNote')) + '</p>' +
+        '<div class="stack" style="margin:8px 0 12px"><button class="btn ghost danger" id="p-clear-memory">' + I('trash') + ' ' + E(T('sheet.privacyMemoryClearBtn')) + '</button></div>' +
+        toggleRow('t-cf-fallback', T('sheet.privacyFallbackToggle'), T('sheet.privacyFallbackSub'), fallbackOn) +
+        '<p class="note" id="privacy-cf-note">' + E(T('sheet.privacyFallbackNote')) + '</p>' +
+        '<div class="note">' + T('sheet.privacyList') + '</div>',
+        body => {
+          bindToggle(body, 't-blur', on => LM.Store.update(s => {
+            s.settings.privacy = s.settings.privacy || {};
+            s.settings.privacy.blurPhotos = on;
+          }));
+          bindToggle(body, 't-barrett-memory', on => {
+            if (LM.ChatStore && typeof LM.ChatStore.setSharedMemoryEnabled === 'function') {
+              LM.ChatStore.setSharedMemoryEnabled(on);
+            }
+          });
+          const clearMemBtn = body.querySelector('#p-clear-memory');
+          if (clearMemBtn) {
+            clearMemBtn.addEventListener('click', async () => {
+              const ok = await LM.confirm({
+                title: T('sheet.privacyMemoryClearTitle'),
+                text: E(T('sheet.privacyMemoryClearText')),
+                ok: T('sheet.privacyMemoryClearOk')
+              });
+              if (ok && LM.ChatStore && typeof LM.ChatStore.clearBarrettSummary === 'function') {
+                LM.ChatStore.clearBarrettSummary();
+                LM.toast('<span class="tx">' + E(T('sheet.privacyMemoryCleared')) + '</span>');
+              }
+              SETTINGS.privacy();
+            });
+          }
+          const cfBtn = body.querySelector('#t-cf-fallback');
+          if (cfBtn) {
+            cfBtn.addEventListener('click', async () => {
+              const cur = Boolean(
+                LM.Store.get().settings &&
+                LM.Store.get().settings.privacy &&
+                LM.Store.get().settings.privacy.cloudflareFallback === true
+              );
+              if (!cur) {
+                const ok = await LM.confirm({
+                  title: T('sheet.privacyFallbackConfirmTitle'),
+                  text: E(T('sheet.privacyFallbackConfirmText')),
+                  ok: T('sheet.privacyFallbackConfirmOk')
+                });
+                if (ok) {
+                  LM.Store.update(s => {
+                    s.settings.privacy = s.settings.privacy || {};
+                    s.settings.privacy.cloudflareFallback = true;
+                  });
+                }
+                SETTINGS.privacy();
+                return;
+              }
+              LM.Store.update(s => {
+                s.settings.privacy = s.settings.privacy || {};
+                s.settings.privacy.cloudflareFallback = false;
+              });
+              const sw = cfBtn.querySelector('.sw');
+              if (sw) sw.classList.remove('on');
+              cfBtn.setAttribute('aria-pressed', 'false');
+            });
+          }
+        }
+      );
     },
     lang() {
       const cur = LM.I18n.lang();

@@ -4,11 +4,14 @@
   "private": true,
   "description": "ASCEND — Gamified self-improvement web app",
   "main": "server.js",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "node server.js",
     "start": "node server.js",
-    "build": "node --check server.js && node --check server/barrett.js",
-    "lint": "node --check server.js && node --check server/barrett.js && node --check ASCEND/js/app.js && node --check ASCEND/js/chat-store.js && node --check ASCEND/js/chat-api.js && node --check ASCEND/js/chat-views.js && node --check ASCEND/js/ui.js"
+    "build": "node --check server.js && node --check server/ai-provider-router.js && node --check server/barrett.js && node scripts/build-public.js",
+    "lint": "node --check server.js && node --check server/ai-provider-router.js && node --check server/barrett.js && node --check scripts/build-public.js && node --check ASCEND/js/store.js && node --check ASCEND/js/app.js && node --check ASCEND/js/chat-store.js && node --check ASCEND/js/chat-api.js && node --check ASCEND/js/chat-views.js && node --check ASCEND/js/ui.js"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",

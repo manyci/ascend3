@@ -408,6 +408,61 @@ async function test(name, fn) {
         strictness: 70,
       });
     });
+
+    await test('Looksmaxxing Community Attitude: all 7 scenarios enforce respect, zero prejudice, objective safety, and persona nuances', async () => {
+      const { LM } = createClientEnv({ baseUrl: srv.baseUrl, lang: 'ru' });
+      const scenarios = [
+        {
+          label: '1. Positive story about Looksmaxxing community',
+          prompt: 'Мне очень нравится комьюнити Looksmaxxing — ребята там делятся рабочими схемами по уходу и реально поддерживают друг друга!',
+        },
+        {
+          label: '2. Sharing personal participation experience',
+          prompt: 'Я уже пару месяцев сижу на форумах looksmaxxing, выложил прогресс по причёске и уходу за кожей, получил крутые советы.',
+        },
+        {
+          label: '3. Asking Barrett opinion about Looksmaxxing',
+          prompt: 'Барретт, как ты вообще относишься к looksmaxxing-комьюнити?',
+        },
+        {
+          label: '4. Discussing a popular trend',
+          prompt: 'Сейчас в комьюнити все обсуждают clean aesthetic и текстурные стрижки — что думаешь про этот тренд?',
+        },
+        {
+          label: '5. Bringing a dubious method from community',
+          prompt: 'На форуме советуют делать жёсткий bonesmashing, чтобы поменять скулы — это вообще работает?',
+        },
+        {
+          label: '6. Facing negative comments from members',
+          prompt: 'Один участник в комментариях жёстко раскритиковал мою внешность и поставил низкую оценку. Что делать?',
+        },
+        {
+          label: '7. Duo Mode viewpoints on Looksmaxxing trends without condemning community',
+          prompt: 'Как вы с Chico смотрите на популярные тренды из looksmaxxing — у кого какой взгляд?',
+        },
+      ];
+
+      for (const sc of scenarios) {
+        nextMockReply = () => ({
+          text: JSON.stringify({
+            emotion: 'neutral',
+            reply: `Уважительный разбор по теме (${sc.label}).`,
+            profileQuote: '',
+            followUps: [],
+          }),
+        });
+        const res = await LM.ChatAPI.sendBarrett(sc.prompt);
+        assert.strictEqual(res.ok, true, `Scenario failed: ${sc.label}`);
+        const call = capturedCalls[capturedCalls.length - 1];
+        const sys = call.systemInstruction;
+        assert.ok(sys.includes('Positive Looksmaxxing Community Attitude:'), `Missing community attitude rule for ${sc.label}`);
+        assert.ok(sys.includes('NEVER mock Looksmaxxing members'), `Missing anti-prejudice rule for ${sc.label}`);
+        assert.ok(sys.includes('Critical Thinking Without Arrogance:'), `Missing critical thinking rule for ${sc.label}`);
+        assert.ok(sys.includes('Chico shows genuine creative interest'), `Missing Chico perspective for ${sc.label}`);
+        assert.ok(sys.includes('Duo Mode, both may share different viewpoints while keeping mutual respect'), `Missing Duo perspective for ${sc.label}`);
+        assert.ok(sys.includes('NEVER assign numerical attractiveness ratings'), `Missing anti-rating safety for ${sc.label}`);
+      }
+    });
   } finally {
     await srv.close();
   }
@@ -415,3 +470,4 @@ async function test(name, fn) {
   console.log(`\nStage 1 Barrett Intelligence Core results: ${passed} passed, ${failed} failed.`);
   if (failed > 0) process.exit(1);
 })();
+

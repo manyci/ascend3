@@ -11,7 +11,7 @@ window.LM = window.LM || {};
   const REQUEST_TIMEOUT_MS = 30000;
   const MAX_RETRY_ATTEMPTS = 5;
   const DUPLICATE_BOUNCE_MS = 600;
-  const MAX_IMAGE_BYTES = 3500000;
+  const MAX_IMAGE_BYTES = 3000000;
   const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
   const inFlight = new Map(); // threadId -> { msgId, startedAt, text }
@@ -231,6 +231,16 @@ window.LM = window.LM || {};
     }
   }
 
+  function isCloudflareFallbackConsented() {
+    if (!LM.Store || !LM.Store.get) return false;
+    try {
+      const st = LM.Store.get();
+      return Boolean(st && st.settings && st.settings.privacy && st.settings.privacy.cloudflareFallback === true);
+    } catch (e) {
+      return false;
+    }
+  }
+
   async function requestJson(url, fetchOpts) {
     const res = await fetch(url, fetchOpts);
     const contentType = String(
@@ -427,13 +437,22 @@ window.LM = window.LM || {};
       const clientId = LM.ChatStore ? LM.ChatStore.getClientId() : ('asc_' + Date.now().toString(36) + '_guest');
       const lang = LM.I18n ? LM.I18n.lang() : 'ru';
       const barrettSettings = buildBarrettSettings();
+      const allowCloudflareFallback = !pendingMedia && isCloudflareFallbackConsented();
+      const sharedMemoryEnabled = Boolean(
+        LM.ChatStore &&
+        typeof LM.ChatStore.isSharedMemoryEnabled === 'function' &&
+        LM.ChatStore.isSharedMemoryEnabled()
+      );
+      const memorySummary = (sharedMemoryEnabled && LM.ChatStore && typeof LM.ChatStore.getBarrettSummary === 'function')
+        ? LM.ChatStore.getBarrettSummary()
+        : '';
       const payload = {
         clientId: clientId,
         lang: lang,
         message: String(userMsg.text || '').slice(0, 1500),
         profile: buildProfile(),
         messages: buildHistory(threadId, userMsg.id),
-        memorySummary: '',
+        memorySummary: memorySummary,
         activePlans: buildActivePlans(),
         ...(barrettSettings ? { barrettSettings: barrettSettings } : {}),
         ...(pendingMedia
@@ -444,8 +463,10 @@ window.LM = window.LM || {};
               },
               explicitConsent: pendingMedia.explicitConsent === true
             }
-          : {}),
-        updateSummary: false
+          : {
+              allowCloudflareFallback: allowCloudflareFallback
+            }),
+        updateSummary: sharedMemoryEnabled
       };
 
       const parsedRes = await requestJson('/api/barrett/chat', {
@@ -517,6 +538,21 @@ window.LM = window.LM || {};
       inFlight.delete(threadId);
       pendingMediaByMsgId.delete(userMsg.id);
       if (LM.ChatStore) {
+        const meta = json.meta && typeof json.meta === 'object' ? json.meta : {};
+        const fallbackUsed = meta.fallbackUsed === true;
+        const isGeminiProvider = !fallbackUsed && (!meta.provider || meta.provider === 'gemini');
+        const stillSharedEnabled = Boolean(
+          typeof LM.ChatStore.isSharedMemoryEnabled === 'function' &&
+          LM.ChatStore.isSharedMemoryEnabled()
+        );
+        if (
+          isGeminiProvider &&
+          stillSharedEnabled &&
+          typeof json.data.updatedSummary === 'string' &&
+          typeof LM.ChatStore.setBarrettSummary === 'function'
+        ) {
+          LM.ChatStore.setBarrettSummary(json.data.updatedSummary);
+        }
         LM.ChatStore.updateMessage(threadId, userMsg.id, { status: 'sent', error: null });
         LM.ChatStore.addMessage(threadId, {
           role: 'assistant',
@@ -524,6 +560,10 @@ window.LM = window.LM || {};
           text: json.data.reply,
           emotion: json.data.emotion || 'neutral',
           followUps: Array.isArray(json.data.followUps) ? json.data.followUps.slice(0, 3) : [],
+          ...(fallbackUsed ? {
+            fallbackUsed: true,
+            provider: typeof meta.provider === 'string' ? meta.provider : 'cloudflare-workers-ai'
+          } : {}),
           replyToId: userMsg.id,
           ts: Date.now(),
           status: 'sent',

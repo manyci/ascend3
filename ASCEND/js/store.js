@@ -62,7 +62,7 @@ window.LM = window.LM || {};
         language: 'ru',
         notifications: { enabled: false, time: '20:00' },
         appearance: { theme: 'dark', grain: true, reduceMotion: false },
-        privacy: { blurPhotos: true }
+        privacy: { blurPhotos: true, cloudflareFallback: false }
       }
     };
   }

@@ -13,7 +13,7 @@ window.LM = window.LM || {};
   LM.CHAT_CHARS = {
     barrett: {
       id: 'barrett',
-      avatar: 'assets/avatars/barrett.jpg',
+      avatar: '/assets/avatars/barrett.jpg',
       accent: 'barrett',
       nameKey: 'chat.char.barrett.name',
       roleKey: 'chat.char.barrett.role',
@@ -21,7 +21,7 @@ window.LM = window.LM || {};
     },
     chico: {
       id: 'chico',
-      avatar: 'assets/avatars/chico.jpg',
+      avatar: '/assets/avatars/chico.jpg',
       accent: 'chico',
       nameKey: 'chat.char.chico.name',
       roleKey: 'chat.char.chico.role',
@@ -29,7 +29,7 @@ window.LM = window.LM || {};
     },
     duo: {
       id: 'duo',
-      avatar: 'assets/avatars/duo.jpg',
+      avatar: '/assets/avatars/duo.jpg',
       accent: 'duo',
       nameKey: 'chat.char.duo.name',
       roleKey: 'chat.char.duo.role',
@@ -83,6 +83,7 @@ window.LM = window.LM || {};
       },
       memory: {
         sharedEnabled: true,
+        barrettSummary: '',
         shared: [],
         private: { barrett: [], chico: [] },
         duo: []
@@ -176,6 +177,12 @@ window.LM = window.LM || {};
           .slice(0, 3);
         if (cleanFollowUps.length) out.followUps = cleanFollowUps;
       }
+      if (raw.fallbackUsed === true) {
+        out.fallbackUsed = true;
+        if (typeof raw.provider === 'string' && raw.provider.trim()) {
+          out.provider = raw.provider.replace(/[\u0000-\u001F\u007F]/g, '').trim().slice(0, 48);
+        }
+      }
     }
     if (status === 'error') {
       const errObj = cleanError(raw.error);
@@ -187,6 +194,23 @@ window.LM = window.LM || {};
   function cleanTitle(raw) {
     if (typeof raw !== 'string') return '';
     return raw.replace(/[\u0000-\u001F\u007F]/g, '').replace(/\s+/g, ' ').trim().slice(0, 48);
+  }
+
+  function cleanMemorySummary(raw) {
+    if (typeof raw !== 'string') return '';
+    return raw
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+      .slice(0, 600);
+  }
+
+  function isValidMemorySummary(raw) {
+    const cleaned = cleanMemorySummary(raw);
+    if (cleaned.length < 3) return false;
+    if (/^(?:null|undefined|none|n\/a|\{\}|\[\])$/i.test(cleaned)) return false;
+    return true;
   }
 
   function sanitizeThread(raw) {
@@ -237,6 +261,7 @@ window.LM = window.LM || {};
     }
     if (parsed.memory && typeof parsed.memory === 'object') {
       d.memory.sharedEnabled = parsed.memory.sharedEnabled !== false;
+      d.memory.barrettSummary = cleanMemorySummary(parsed.memory.barrettSummary);
       if (Array.isArray(parsed.memory.shared)) d.memory.shared = parsed.memory.shared.slice(0, 120);
       if (parsed.memory.private && typeof parsed.memory.private === 'object') {
         if (Array.isArray(parsed.memory.private.barrett)) d.memory.private.barrett = parsed.memory.private.barrett.slice(0, 120);
@@ -335,6 +360,44 @@ window.LM = window.LM || {};
 
     getClientId() {
       return ensureLoaded().clientId;
+    },
+
+    isSharedMemoryEnabled() {
+      const s = ensureLoaded();
+      return Boolean(s.memory && s.memory.sharedEnabled !== false);
+    },
+
+    setSharedMemoryEnabled(enabled) {
+      const next = Boolean(enabled);
+      this.update(s => {
+        if (!s.memory || typeof s.memory !== 'object') s.memory = defaults().memory;
+        s.memory.sharedEnabled = next;
+      });
+      return next;
+    },
+
+    getBarrettSummary() {
+      const s = ensureLoaded();
+      return s.memory && typeof s.memory.barrettSummary === 'string'
+        ? cleanMemorySummary(s.memory.barrettSummary)
+        : '';
+    },
+
+    setBarrettSummary(raw) {
+      if (!isValidMemorySummary(raw)) return false;
+      const cleaned = cleanMemorySummary(raw);
+      this.update(s => {
+        if (!s.memory || typeof s.memory !== 'object') s.memory = defaults().memory;
+        s.memory.barrettSummary = cleaned;
+      });
+      return true;
+    },
+
+    clearBarrettSummary() {
+      this.update(s => {
+        if (!s.memory || typeof s.memory !== 'object') s.memory = defaults().memory;
+        s.memory.barrettSummary = '';
+      });
     },
 
     getThread(id) {

@@ -1,0 +1,184 @@
+diff --git a/.env.example b/.env.example
+index 7d3194e..4c809b5 100644
+--- a/.env.example
++++ b/.env.example
+@@ -3,7 +3,7 @@ GEMINI_API_KEY=
+
+ # Optional Barrett AI server configuration (changeable without modifying client code):
+-BARRETT_MODEL=gemini-4-hydrogen
+-BARRETT_ANALYZE_MODEL=gemini-4-hydrogen
++BARRETT_MODEL=gemini-3.5-flash-lite
++BARRETT_ANALYZE_MODEL=gemini-3.5-flash-lite
+ BARRETT_THINKING_LEVEL=LOW
+ BARRETT_DAILY_TOTAL_CAP=250
+diff --git a/server.js b/server.js
+index 9e0cdf5..d2e39f9 100644
+--- a/server.js
++++ b/server.js
+@@ -1,12 +1,16 @@
+ const express = require('express');
+ const path = require('path');
+-const { createBarrettRouter } = require('./server/barrett');
++const { createBarrettRouter, getSafeRuntimeDiagnostics } = require('./server/barrett');
+
+ const app = express();
+ const PORT = Number(process.env.PORT) || 3000;
+ const HOST = '0.0.0.0';
+ const staticDir = path.join(__dirname, 'ASCEND');
+
++if (process.env.VERCEL) {
++  console.info('[barrett:boot]', JSON.stringify(getSafeRuntimeDiagnostics()));
++}
++
+ app.use('/api/barrett', createBarrettRouter());
+
+ app.use(express.static(staticDir, {
+@@ -23,6 +27,7 @@ app.use((req, res, next) => {
+ if (require.main === module) {
+   app.listen(PORT, HOST, () => {
+     console.log(`ASCEND server listening on http://${HOST}:${PORT}`);
++    console.info('[barrett:boot]', JSON.stringify(getSafeRuntimeDiagnostics()));
+   });
+ }
+
+diff --git a/server/barrett.js b/server/barrett.js
+index 19795d4..d288031 100644
+--- a/server/barrett.js
++++ b/server/barrett.js
+@@ -7,6 +7,8 @@
+ const express = require('express');
+ const crypto = require('crypto');
+
++const DEFAULT_BARRETT_MODEL = 'gemini-3.5-flash-lite';
++
+ const DEPRECATED_MODELS = new Set([
+   'gemini-1.5-flash',
+   'gemini-1.5-pro',
+@@ -50,7 +52,7 @@ function parseRetryDelays(raw) {
+
+ function readConfig(overrides = {}) {
+   const rawModel = String(
+-    overrides.model || process.env.BARRETT_MODEL || process.env.GEMINI_MODEL || 'gemini-4-hydrogen'
++    overrides.model || process.env.BARRETT_MODEL || process.env.GEMINI_MODEL || DEFAULT_BARRETT_MODEL
+   ).trim();
+   const rawAnalyzeModel = String(
+     overrides.analyzeModel || process.env.BARRETT_ANALYZE_MODEL || rawModel
+@@ -58,7 +60,7 @@ function readConfig(overrides = {}) {
+
+   const validateModelName = (m) => {
+     if (!/^[a-z0-9][a-z0-9.-]{2,64}$/i.test(m) || DEPRECATED_MODELS.has(m.toLowerCase())) {
+-      return 'gemini-4-hydrogen';
++      return DEFAULT_BARRETT_MODEL;
+     }
+     return m;
+   };
+@@ -66,7 +68,7 @@ function readConfig(overrides = {}) {
+   const rawThinking = String(
+     overrides.thinkingLevel || process.env.BARRETT_THINKING_LEVEL || 'LOW'
+   ).trim().toUpperCase();
+-  const thinkingLevel = ['LOW', 'MEDIUM', 'HIGH'].includes(rawThinking) ? rawThinking : 'LOW';
++  const thinkingLevel = ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'].includes(rawThinking) ? rawThinking : 'LOW';
+
+   const rawTimeout = overrides.timeoutMs !== undefined ? Number(overrides.timeoutMs) : Number(process.env.BARRETT_TIMEOUT_MS);
+   const timeoutMs = Number.isFinite(rawTimeout) && rawTimeout > 0
+@@ -92,7 +94,22 @@ function readConfig(overrides = {}) {
+
+ function getApiKey(overrides = {}) {
+   const k = overrides.apiKey !== undefined ? overrides.apiKey : process.env.GEMINI_API_KEY;
+-  return typeof k === 'string' ? k.trim() : '';
++  if (typeof k !== 'string') return '';
++  return k.trim().replace(/^["'](.*)["']$/, '$1').trim();
++}
++
++function getSafeRuntimeDiagnostics(overrides = {}) {
++  const cfg = readConfig(overrides);
++  const commitSha = String(process.env.VERCEL_GIT_COMMIT_SHA || '').trim();
++  return {
++    GEMINI_API_KEY_PRESENT: Boolean(getApiKey(overrides)),
++    VERCEL_ENV: String(process.env.VERCEL_ENV || 'local').trim() || 'local',
++    VERCEL_GIT_COMMIT_SHA: commitSha ? commitSha.slice(0, 7) : 'none',
++    model: cfg.model,
++    analyzeModel: cfg.analyzeModel,
++    thinkingLevel: cfg.thinkingLevel,
++    route: '/api/barrett',
++  };
+ }
+
+ function cleanStr(val, maxLen) {
+@@ -1536,6 +1551,9 @@ module.exports = {
+   createBarrettRouter,
+   readConfig,
++  getApiKey,
++  getSafeRuntimeDiagnostics,
++  DEFAULT_BARRETT_MODEL,
+   createRateGuard,
+   mapUpstreamError,
+   buildBarrettSystemInstruction,
+diff --git a/ASCEND/tests/stage-4-1-api.test.js b/ASCEND/tests/stage-4-1-api.test.js
+index 8d852ae..0826399 100644
+--- a/ASCEND/tests/stage-4-1-api.test.js
++++ b/ASCEND/tests/stage-4-1-api.test.js
+@@ -8,7 +8,13 @@
+ const path = require('path');
+
+ const prodApp = require('../../server');
+-const { createBarrettRouter, readConfig, scrubUnsafeRatings } = require('../../server/barrett');
++const {
++  createBarrettRouter,
++  readConfig,
++  getApiKey,
++  getSafeRuntimeDiagnostics,
++  scrubUnsafeRatings,
++} = require('../../server/barrett');
+
+ function startServer(app) {
+   return new Promise((resolve, reject) => {
+@@ -78,7 +84,8 @@
+       const r = await reqJson(prod.baseUrl, '/api/barrett/health');
+       assert.strictEqual(r.status, 200);
+       assert.strictEqual(r.json.ok, true);
+-      assert.strictEqual(r.json.model, 'gemini-4-hydrogen');
++      assert.strictEqual(r.json.model, 'gemini-3.5-flash-lite');
++      assert.strictEqual(r.json.analyzeModel, 'gemini-3.5-flash-lite');
+       assert.strictEqual(r.json.multimodalSupported, true);
+       assert.strictEqual(r.json.structuredOutputSupported, true);
+       assert.strictEqual(r.json.privacy.serverPhotoRetention, false);
+@@ -570,13 +577,39 @@
+       const cfg = readConfig({ model: 'gemini-1.5-flash' });
+-      assert.strictEqual(cfg.model, 'gemini-4-hydrogen');
++      assert.strictEqual(cfg.model, 'gemini-3.5-flash-lite');
++      assert.strictEqual(cfg.analyzeModel, 'gemini-3.5-flash-lite');
++      assert.strictEqual(readConfig({ thinkingLevel: 'MINIMAL' }).thinkingLevel, 'MINIMAL');
++      assert.strictEqual(getApiKey({ apiKey: ' "AIzaSyTestTrim12345" ' }), 'AIzaSyTestTrim12345');
++      const diag = getSafeRuntimeDiagnostics({ apiKey: 'AIzaSySecretNeverLeak123456' });
++      assert.strictEqual(diag.GEMINI_API_KEY_PRESENT, true);
++      assert.strictEqual(diag.model, 'gemini-3.5-flash-lite');
++      assert.ok(!JSON.stringify(diag).includes('AIzaSy'));
+       assert.strictEqual(scrubUnsafeRatings('Rating: 8.5/10 overall'), 'Rating: — overall');
+       assert.ok(!fs.existsSync(path.join(__dirname, '..', '..', 'uploads')));
+
+       const defaultCfg = readConfig({});
++      assert.strictEqual(defaultCfg.model, 'gemini-3.5-flash-lite');
++      assert.strictEqual(defaultCfg.analyzeModel, 'gemini-3.5-flash-lite');
+       assert.ok(defaultCfg.timeoutMs > 0 && defaultCfg.timeoutMs < 30000, 'Default server timeout must stay strictly below client 30s timeout');
+     });
++
++    await test('Configured GEMINI_API_KEY reports available=true and gemini-3.5-flash-lite on /health without leaking key', async () => {
++      const configuredApp = express();
++      configuredApp.use('/api/barrett', createBarrettRouter({ apiKey: ' "AIzaSyFakeConfiguredKey123456" ' }));
++      const cfgSrv = await startServer(configuredApp);
++      try {
++        const h = await reqJson(cfgSrv.baseUrl, '/api/barrett/health');
++        assert.strictEqual(h.status, 200);
++        assert.strictEqual(h.json.ok, true);
++        assert.strictEqual(h.json.available, true);
++        assert.strictEqual(h.json.model, 'gemini-3.5-flash-lite');
++        assert.strictEqual(h.json.analyzeModel, 'gemini-3.5-flash-lite');
++        assert.ok(!h.text.includes('AIzaSy'));
++      } finally {
++        await cfgSrv.close();
++      }
++    });
+   } finally {
+     await limSrv.close();
+   }

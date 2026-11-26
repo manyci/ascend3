@@ -10,34 +10,34 @@ window.LM = window.LM || {};
   const dowList = () => [0, 1, 2, 3, 4, 5, 6].map(i => T('progress.dow.' + i));
 
   const GUIDE_PHOTO = {
-    'face-jawline': 'assets/cats/face.jpg',
-    'face-puffiness': 'assets/cats/health.jpg',
-    'face-tongue': 'assets/guides/sleep-linen.jpg',
-    'face-smile': 'assets/guides/dental-smile.jpg',
-    'skin-sunscreen': 'assets/guides/skincare-spf.jpg',
-    'skin-routine': 'assets/cats/skin.jpg',
-    'skin-retinoid': 'assets/cats/hair.jpg',
-    'skin-acne': 'assets/cats/health.jpg',
-    'hair-care': 'assets/cats/hair.jpg',
-    'hair-scalp': 'assets/cats/skin.jpg',
-    'hair-loss': 'assets/guides/skincare-spf.jpg',
-    'hair-style': 'assets/cats/grooming.jpg',
-    'body-posture': 'assets/guides/posture-rings.jpg',
-    'body-strength': 'assets/cats/body.jpg',
-    'body-fat': 'assets/guides/nutrition-bowl.jpg',
-    'body-walk': 'assets/guides/running-track.jpg',
-    'style-fit': 'assets/cats/style.jpg',
-    'style-palette': 'assets/guides/tailor-shirt.jpg',
-    'style-proportions': 'assets/cats/body.jpg',
-    'style-care': 'assets/guides/running-track.jpg',
-    'groom-beard': 'assets/cats/grooming.jpg',
-    'groom-brows': 'assets/cats/face.jpg',
-    'groom-scent': 'assets/guides/fragrance-wood.jpg',
-    'groom-hands': 'assets/cats/skin.jpg',
-    'health-sleep': 'assets/guides/sleep-linen.jpg',
-    'health-hydration': 'assets/cats/health.jpg',
-    'health-smoke': 'assets/guides/running-track.jpg',
-    'health-mind': 'assets/guides/nutrition-bowl.jpg'
+    'face-jawline': '/assets/cats/face.jpg',
+    'face-puffiness': '/assets/cats/health.jpg',
+    'face-tongue': '/assets/guides/sleep-linen.jpg',
+    'face-smile': '/assets/guides/dental-smile.jpg',
+    'skin-sunscreen': '/assets/guides/skincare-spf.jpg',
+    'skin-routine': '/assets/cats/skin.jpg',
+    'skin-retinoid': '/assets/cats/hair.jpg',
+    'skin-acne': '/assets/cats/health.jpg',
+    'hair-care': '/assets/cats/hair.jpg',
+    'hair-scalp': '/assets/cats/skin.jpg',
+    'hair-loss': '/assets/guides/skincare-spf.jpg',
+    'hair-style': '/assets/cats/grooming.jpg',
+    'body-posture': '/assets/guides/posture-rings.jpg',
+    'body-strength': '/assets/cats/body.jpg',
+    'body-fat': '/assets/guides/nutrition-bowl.jpg',
+    'body-walk': '/assets/guides/running-track.jpg',
+    'style-fit': '/assets/cats/style.jpg',
+    'style-palette': '/assets/guides/tailor-shirt.jpg',
+    'style-proportions': '/assets/cats/body.jpg',
+    'style-care': '/assets/guides/running-track.jpg',
+    'groom-beard': '/assets/cats/grooming.jpg',
+    'groom-brows': '/assets/cats/face.jpg',
+    'groom-scent': '/assets/guides/fragrance-wood.jpg',
+    'groom-hands': '/assets/cats/skin.jpg',
+    'health-sleep': '/assets/guides/sleep-linen.jpg',
+    'health-hydration': '/assets/cats/health.jpg',
+    'health-smoke': '/assets/guides/running-track.jpg',
+    'health-mind': '/assets/guides/nutrition-bowl.jpg'
   };
 
   const V = LM.Views = {
@@ -89,7 +89,7 @@ window.LM = window.LM || {};
 
     return '' +
       '<section class="home-hero">' +
-        '<img class="home-hero-portrait" src="design-reference/barrett/barrett-01.png" alt="" aria-hidden="true" onerror="this.remove()">' +
+        '<img class="home-hero-portrait" src="/assets/avatars/barrett-portrait.png" alt="" aria-hidden="true" onerror="this.remove()">' +
         '<div class="home-hero-canvas" aria-hidden="true"></div>' +
         '<div class="home-hero-top">' +
           '<span class="home-word">ASCEND</span>' +
@@ -176,7 +176,7 @@ window.LM = window.LM || {};
         const items = LM.GUIDES.filter(g => g.cat === c.id);
         const studiedN = items.filter(g => !!s.studied[g.id]).length;
         return '<button class="card catcard" data-act="gcat" data-cat="' + c.id + '">' +
-          '<img class="catcard-img" src="assets/cats/' + E(c.id) + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' +
+          '<img class="catcard-img" src="/assets/cats/' + E(c.id) + '.jpg" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' +
           '<span class="catcard-scrim" aria-hidden="true"></span>' +
           '<span class="catcard-txt">' +
             '<span class="catcard-t-row"><span class="catcard-t">' + E(LM.catLabel(c)) + '</span><span class="catcard-cnt" title="' + E(T('guides.catMeta', { total: items.length, studied: studiedN })) + '">' + studiedN + '/' + items.length + '</span></span>' +
@@ -206,7 +206,7 @@ window.LM = window.LM || {};
       const pr = LM.guidePractice(g.id), pStats = LM.PracticeStore.stats(g.id);
       const dur = pr ? pr.durationLabel : T('common.minUnit', { m: 2 });
       const stepCount = pr ? pr.steps.length : g.steps.length;
-      const photoSrc = GUIDE_PHOTO[g.id] || ('assets/cats/' + g.cat + '.jpg');
+      const photoSrc = GUIDE_PHOTO[g.id] || ('/assets/cats/' + g.cat + '.jpg');
       return '<div class="card gitem gitem-photo">' +
         '<img class="gitem-img" src="' + E(photoSrc) + '" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">' +
         '<span class="gitem-scrim" aria-hidden="true"></span>' +

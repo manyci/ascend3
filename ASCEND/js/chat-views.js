@@ -356,6 +356,9 @@ window.LM = window.LM || {};
         const avMeta = senderAvatar(msg, meta);
         const sName = senderBadgeName(msg);
         const isLast = idx === msgs.length - 1;
+        const fallbackHtml = msg.fallbackUsed === true
+          ? '<div class="chat-fallback-note" role="note">' + I('info', { size: 12 }) + '<span>' + E(T('chat.fallbackNotice')) + '</span></div>'
+          : '';
         const followUpsHtml = (isLast && !isBusy && threadId === 'barrett' && msg.followUps && msg.followUps.length)
           ? renderFollowUps(msg.followUps, 'chat-followups')
           : '';
@@ -369,6 +372,7 @@ window.LM = window.LM || {};
                   menuBtn +
                 '</div>' +
                 '<div class="chat-txt">' + textHtml + '</div>' +
+                fallbackHtml +
                 '<div class="chat-meta">' + pinSpan + editedSpan + '<span class="chat-time">' + E(formatTime(msg.ts)) + '</span></div>' +
               '</div>' +
               followUpsHtml +

@@ -6,7 +6,7 @@
    4. Photo + text caption sends both inlineData and user text cleanly
    5. Multi-turn context builds alternating/clean Content[] history across text and photo turns
    6. Unsupported MIME type (GIF/SVG) rejected client-side & server-side (400 INVALID_IMAGE)
-   7. File > 3.5 MB rejected client-side & server-side (413 IMAGE_TOO_LARGE)
+   7. File > 3,000,000 bytes (3 MB) rejected client-side & server-side (413 IMAGE_TOO_LARGE); exact 3,000,000 bytes allowed
    8. Corrupted / mismatched magic bytes rejected client-side & server-side (400 INVALID_IMAGE_DATA)
    9. Missing explicitConsent rejected client-side & server-side (400 CONSENT_REQUIRED)
    10. Transient 503 error state & Retry keeps original attached photo and succeeds on retry
@@ -348,13 +348,24 @@ async function test(name, fn) {
       assert.strictEqual(capturedCalls.length, 0);
     });
 
-    await test('7. File > 3.5 MB is rejected on both client & server (413 IMAGE_TOO_LARGE)', async () => {
+    await test('7. File > 3,000,000 bytes (3 MB) is rejected on both client & server (413 IMAGE_TOO_LARGE), while 3,000,000 bytes passes', async () => {
       capturedCalls = [];
       const { LM } = createEnv({ baseUrl: srv.baseUrl });
-      const oversizedPayload = VALID_JPEG_B64 + 'A'.repeat(4_800_000);
+      const exactMaxBuf = Buffer.concat([VALID_JPEG_BUF, Buffer.alloc(3_000_000 - VALID_JPEG_BUF.length, 0x41)]);
+      const exactMaxB64 = exactMaxBuf.toString('base64');
+      const overMaxBuf = Buffer.concat([VALID_JPEG_BUF, Buffer.alloc(3_000_003 - VALID_JPEG_BUF.length, 0x41)]);
+      const oversizedPayload = overMaxBuf.toString('base64');
 
+      const exactClientRes = await LM.ChatAPI.sendBarrett('check exact 3MB limit', {
+        image: { mimeType: 'image/jpeg', dataBase64: exactMaxB64, sizeBytes: 3_000_000 },
+        explicitConsent: true,
+      });
+      assert.strictEqual(exactClientRes.ok, true);
+      assert.strictEqual(capturedCalls.length, 1);
+
+      capturedCalls = [];
       const clientRes = await LM.ChatAPI.sendBarrett('check size', {
-        image: { mimeType: 'image/jpeg', dataBase64: VALID_JPEG_B64, sizeBytes: 4_000_000 },
+        image: { mimeType: 'image/jpeg', dataBase64: VALID_JPEG_B64, sizeBytes: 3_000_001 },
         explicitConsent: true,
       });
       assert.strictEqual(clientRes.ok, false);
