@@ -81,20 +81,34 @@ function main() {
     throw new Error(`Missing source entrypoint: ${path.join(SRC_DIR, 'index.html')}`);
   }
 
-  // Rebuild public/ cleanly so stale/archived files never linger in CDN output
-  fs.rmSync(OUT_DIR, { recursive: true, force: true });
+  // Refresh generated runtime files without deleting deploy-uploaded public assets.
+  // Vercel snapshots public/ before running the build; deleting a pre-uploaded file
+  // here can make its later upload stream fail with ENOENT. Keep aistudio assets
+  // that exist only in public/ and rebuild the app-owned runtime directories.
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   for (const file of RUNTIME_FILES) {
     const src = path.join(SRC_DIR, file);
     if (!fs.existsSync(src)) throw new Error(`Missing required runtime file: ${src}`);
+    fs.rmSync(path.join(OUT_DIR, file), { force: true });
     fs.copyFileSync(src, path.join(OUT_DIR, file));
   }
 
   for (const dir of RUNTIME_DIRS) {
     const src = path.join(SRC_DIR, dir);
+    const dest = path.join(OUT_DIR, dir);
     if (!fs.existsSync(src)) throw new Error(`Missing required runtime directory: ${src}`);
-    copyDirRecursive(src, path.join(OUT_DIR, dir));
+
+    if (dir === 'assets') {
+      fs.mkdirSync(dest, { recursive: true });
+      for (const entry of fs.readdirSync(dest, { withFileTypes: true })) {
+        if (entry.name === 'aistudio') continue;
+        fs.rmSync(path.join(dest, entry.name), { recursive: true, force: true });
+      }
+    } else {
+      fs.rmSync(dest, { recursive: true, force: true });
+    }
+    copyDirRecursive(src, dest);
   }
 
   // Ensure forbidden non-runtime artifacts are not present in public/
