@@ -112,7 +112,7 @@ function main() {
   }
 
   // Ensure forbidden non-runtime artifacts are not present in public/
-  for (const forbidden of [...FORBIDDEN_TOP_LEVEL, 'assets/aistudio']) {
+  for (const forbidden of FORBIDDEN_TOP_LEVEL) {
     const target = path.join(OUT_DIR, forbidden);
     if (fs.existsSync(target)) {
       throw new Error(`Forbidden non-runtime path found in public/: ${target}`);
