@@ -42,7 +42,7 @@ function collectRuntimeReferences(baseDir) {
   }
 
   const chatStore = fs.readFileSync(path.join(baseDir, 'js/chat-store.js'), 'utf8');
-  for (const m of chatStore.matchAll(/avatar:\s*["']([^"']+)["']/g)) {
+  for (const m of chatStore.matchAll(/(?:avatar|photo):\s*["']([^"']+)["']/g)) {
     refs.add(m[1].trim());
   }
 
@@ -81,38 +81,24 @@ function main() {
     throw new Error(`Missing source entrypoint: ${path.join(SRC_DIR, 'index.html')}`);
   }
 
-  // Refresh generated runtime files without deleting deploy-uploaded public assets.
-  // Vercel snapshots public/ before running the build; deleting a pre-uploaded file
-  // here can make its later upload stream fail with ENOENT. Keep aistudio assets
-  // that exist only in public/ and rebuild the app-owned runtime directories.
+  // Rebuild public/ cleanly so stale/archived files never linger in CDN output
+  fs.rmSync(OUT_DIR, { recursive: true, force: true });
   fs.mkdirSync(OUT_DIR, { recursive: true });
 
   for (const file of RUNTIME_FILES) {
     const src = path.join(SRC_DIR, file);
     if (!fs.existsSync(src)) throw new Error(`Missing required runtime file: ${src}`);
-    fs.rmSync(path.join(OUT_DIR, file), { force: true });
     fs.copyFileSync(src, path.join(OUT_DIR, file));
   }
 
   for (const dir of RUNTIME_DIRS) {
     const src = path.join(SRC_DIR, dir);
-    const dest = path.join(OUT_DIR, dir);
     if (!fs.existsSync(src)) throw new Error(`Missing required runtime directory: ${src}`);
-
-    if (dir === 'assets') {
-      fs.mkdirSync(dest, { recursive: true });
-      for (const entry of fs.readdirSync(dest, { withFileTypes: true })) {
-        if (entry.name === 'aistudio') continue;
-        fs.rmSync(path.join(dest, entry.name), { recursive: true, force: true });
-      }
-    } else {
-      fs.rmSync(dest, { recursive: true, force: true });
-    }
-    copyDirRecursive(src, dest);
+    copyDirRecursive(src, path.join(OUT_DIR, dir));
   }
 
   // Ensure forbidden non-runtime artifacts are not present in public/
-  for (const forbidden of FORBIDDEN_TOP_LEVEL) {
+  for (const forbidden of [...FORBIDDEN_TOP_LEVEL, 'assets/aistudio']) {
     const target = path.join(OUT_DIR, forbidden);
     if (fs.existsSync(target)) {
       throw new Error(`Forbidden non-runtime path found in public/: ${target}`);

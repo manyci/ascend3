@@ -151,42 +151,36 @@ Script order in `ASCEND/index.html` matters: `data -> practices -> demos -> i18n
   - Live Chromium verification (`390×844` and `1440×900`, Dark & Light, RU & EN, empty & multi-day active history): zero console/network errors and zero horizontal overflow across all routes.
 
 ## Last completed stage
-Vercel Preview Preparation (following Stage 4.3 — Barrett Long-Term Memory & Strict Provider Isolation). Locally built and tested across Node suites and local HTTP smoke checks; Preview deployment NOT yet executed, NOT Production-ready.
+Barrett Profile, Personality & Chat Experience Upgrade (Stage 4.4, following Stage 4.3 & Vercel Preview Preparation). Locally built and tested across Node suites and local HTTP smoke checks; Preview deployment NOT yet executed, NOT Production-ready.
 
-## Stage 4.1, 4.2, 4.3 & Vercel Preview Preparation — what changed
+## Stage 4.1, 4.2, 4.3, 4.4 & Vercel Preview Preparation — what changed
 - `server.js` + `server/barrett.js`: Express API routes (`/api/barrett/health`, `/api/barrett/chat`, `/api/barrett/analyze`, `/api/barrett/guide`) with server-only `GEMINI_API_KEY`, client disconnect `AbortController`, zero photo retention, dual-layer in-memory rate guard (per-IP, per-clientId, concurrency, daily cost cap), `<18` minor safety guardrails (forbidding abrasive scrubs, strong acids, retinoids, extreme lifting/diets), Looksmaxxing community neutrality/respect rules, ASCEND module grounding, anti-hallucination guardrails (no fabricated commercial SKUs such as `Lux Max`), informal Russian `"ты"` tone anchors in both primary & compact fallback instructions, Russian declension matching in `PLAN_TRIGGER_RE`, static `SCHEMA_TYPE` constants + live-only SDK pre-warming, `validatorSpec` enforcement on `/chat`, `/analyze`, and `/guide`, non-secret `timeouts` visibility in `/api/barrett/health` & diagnostics, and `3600`-char chat reply limit.
 - `server/ai-provider-router.js`: Persona-independent AI router (primary `@google/genai`, default `gemini-3.5-flash-lite`; opt-in backup Cloudflare Workers AI `@cf/meta/llama-3.3-70b-instruct-fp8-fast` via REST `result.response`) with hard total request budget, Vercel Hobby `8500 / 4500 / 3500` + `[250, 500]` defaults, bounded retries, JSON Schema 7 `response_format`, and non-PII lifecycle telemetry.
 - **Stage 4.3 — Barrett Long-Term Memory & Isolation (`ASCEND/js/chat-store.js`, `ASCEND/js/chat-api.js`, `server/ai-provider-router.js`, `server/barrett.js`)**:
   - `ChatStore` (`ascend.chat.v1`): `memory.barrettSummary` (`<= 600` chars), sanitization, empty/sentinel overwrite guard, legacy compatibility, and `isSharedMemoryEnabled()` / `setSharedMemoryEnabled()` / `getBarrettSummary()` / `setBarrettSummary()` / `clearBarrettSummary()`.
   - `ChatAPI.dispatchBarrett`: Transmits `memorySummary` and `updateSummary: true` only when `sharedEnabled` is enabled; saves `updatedSummary` only from Gemini when `sharedEnabled` remains `true` on completion.
   - **Strict Isolation**: `fallbackResponseSchema` and `fallbackSystemInstruction` completely exclude `memorySummary`, `updateSummary`, and `updatedSummary` from Cloudflare payloads/schemas; `/analyze` and `/guide` never use Barrett memory or Cloudflare.
+- **Stage 4.4 — Barrett Profile, Personality & Chat Experience Upgrade (`ASCEND/js/chat-store.js`, `chat-views.js`, `app.js`, `css/styles.css`, `i18n/{ru,en}.js`, `server/barrett.js`, `scripts/build-public.js`)**:
+  - **Extensible Mentor Profiles (`LM.MENTOR_PROFILES`, `LM.getMentorProfile`)**: Declarative structure for mentor profiles (`barrett` enabled with `Jordan Barrett` + `barrett-portrait.png`, `chico` structure ready without activating incomplete Chico mentor UI/backend).
+  - **Telegram-Style Barrett Profile Overlay (`#mentor-profile-overlay`)**: Triggered by clicking Barrett's avatar/header info (`#chat-head-profile-btn`), displays portrait photo, `Jordan Barrett`, virtual AI character status, personality description, bio, interests, specializations, quote, and principles across Dark & Light themes and mobile/desktop layouts.
+  - **Exact State & Scroll Preservation**: Overlay mounts on `#app` outside `#view`; closing via Back button, `Escape`, or browser `popstate` returns to exact `#chat-feed.scrollTop`, dialogue history, and unsent `#chat-input` draft without resetting chat DOM.
+  - **Interactive Follow-Up Prompts (`chat-followup`)**: Clicking follow-up suggestions populates `#chat-input` and focuses it for editing instead of auto-sending; user submits manually.
+  - **Barrett Personality Upgrade (`server/barrett.js`)**: Enriched first-person virtual AI persona inspired by Jordan Barrett's public image and editorial aesthetic with conversational initiative and an explicit identity boundary (never claiming to be the real-world Jordan Barrett or fabricating real-life memories).
 - **Vercel Preview Preparation — what changed**:
-  - **Reproducible `public/` build (`scripts/build-public.js`, `package.json`, `.vercelignore`)**: Archived legacy `public/assets/aistudio/` into `archive/aistudio-assets/` (excluded via `.vercelignore`). `npm run build` runs syntax checks + `node scripts/build-public.js`, rebuilding clean `public/` (`~7.0 MB`: `index.html`, `css/`, `js/`, `fonts/`, `assets/`), excluding `tests/`, `exports/`, `docs/`, `design-reference/`, and `*.md`, and verifying all 51 runtime links.
+  - **Reproducible `public/` build (`scripts/build-public.js`, `package.json`, `.vercelignore`)**: Archived legacy `public/assets/aistudio/` into `archive/aistudio-assets/` (excluded via `.vercelignore`). `npm run build` runs syntax checks + `node scripts/build-public.js`, rebuilding clean `public/` (`~7.0 MB`: `index.html`, `css/`, `js/`, `fonts/`, `assets/`), excluding `tests/`, `exports/`, `docs/`, `design-reference/`, and `*.md`, and verifying all runtime links (`avatar` + `photo` included).
   - **Barrett portrait & root-relative paths (`ASCEND/assets/avatars/barrett-portrait.png`, `ASCEND/index.html`, `ASCEND/css/styles.css`, `ASCEND/js/views.js`, `ASCEND/js/chat-store.js`)**: Copied `barrett-01.png` -> `ASCEND/assets/avatars/barrett-portrait.png` (original preserved in `design-reference/`). Switched HTML, CSS `@font-face` (`url('/fonts/...')`), avatars, category images, guide images, and Home portrait to root-relative `/...` paths so local Express, Vercel `public/` CDN, and nested SPA fallback URLs all resolve assets reliably.
   - **Single Express entrypoint (`server.js`)**: Kept root `server.js` zero-config Express entrypoint without adding `api/index.js` or `vercel.json`; uses `ASCEND/` locally with fallback to `public/`, and excludes `/api/` from SPA HTML fallback.
   - **Vercel Hobby payload safety (`ASCEND/js/chat-api.js`, `server/barrett.js`, `ASCEND/js/i18n/{ru,en}.js`, `ASCEND/tests/stage-2-multimodal-chat.test.js`)**: Lowered max binary image size from `3,500,000` to `3,000,000` bytes (`3 MB`, keeping Base64 JSON under Vercel Hobby's `4.5 MB` request body cap) and `express.json` limit to `'4.5mb'`, with synchronized RU/EN messages and boundary tests (`3,000,000` accepted / `3,000,001+` rejected with `413 IMAGE_TOO_LARGE`).
   - **Runtime pin (`package.json`)**: Added `"engines": { "node": "22.x" }` (verified on Node `v22.23.5` with `@google/genai` `^3.6.1` and `express` `^5.3.0`).
 - **Privacy & Consent (`ASCEND/js/store.js`, `app.js`, `chat-api.js`, `chat-views.js`, `i18n/{en,ru}.js`)**: `settings.privacy.cloudflareFallback` defaults to `false`; enabling requires `LM.confirm` disclosure; images, `/analyze`, and `/guide` never route to Cloudflare; `Chico` and `Duo` chats stay strictly local.
-- **Automated Verification Results (Post-Vercel-Preview-Preparation — 96/96 passing)**:
-  - `npm run build` (`compile_applet`): **passed** (`[build-public] Built public/ from ASCEND/ (51 runtime references verified, 0 broken, 0 design-reference links)`).
-  - `npm run lint` (`lint_applet`): **passed** (`node --check` on server, build script, and client JS modules).
-  - `ASCEND/tests/stage-4-3-memory-and-resilience.test.js`: **6 passed, 0 failed**.
-  - `ASCEND/tests/stage-4-1-api.test.js`: **18 passed, 0 failed**.
-  - `ASCEND/tests/stage-4-2-cloudflare-fallback.test.js`: **19 passed, 0 failed**.
-  - `ASCEND/tests/stage-1-barrett-intelligence.test.js`: **9 passed, 0 failed**.
-  - `ASCEND/tests/stage-1-chat-integration.test.js`: **13 passed, 0 failed**.
-  - `ASCEND/tests/stage-2-chat-management.test.js`: **9 passed, 0 failed**.
-  - `ASCEND/tests/stage-2-multimodal-chat.test.js`: **12 passed, 0 failed** (including exact `3,000,000` allowed & `>3,000,000` rejected boundary checks).
-  - `benchmark/tests/benchmark.test.js`: **10 passed, 0 failed**.
-  - **Local HTTP Smoke Test (`server.js` + `public/`)**: **passed** (`GET /`, SPA fallback `GET /nested/deep/route/here`, `/api/barrett/health`, validation on `/chat`, `/analyze`, `/guide`, `/api/barrett/unknown-route` -> `404`, all 51 static links -> `200` from both `server.js` and `public/`, forbidden files `tests/`/`exports/`/`design-reference/`/`PROJECT_STATUS.md`/`assets/aistudio/` -> `404` in `public/`).
 - **Explicitly NOT Executed / Pending**:
   - **Vercel Preview deployment has NOT been executed yet** (and project is **NOT Production-ready**).
   - **Playwright headless Chromium tests were NOT executed** (`playwright` is not installed in this environment; note legacy `ASCEND/tests/stage-chat-stage2.test.js` & `ASCEND/tests/server.js` mount `/new/` subpath and should be checked/updated if used with root-relative `/` paths).
   - **Live HTTP requests with real Gemini/Cloudflare API keys** (`/api/barrett/chat`, `/api/barrett/analyze`, `/api/barrett/guide`) were **NOT executed** after these changes.
-  - **ZIP re-export & GitHub push** were **NOT executed**.
+  - **Git commit / Preview branch push / ZIP re-export** were **NOT executed** (`.git` is not initialized in this sandbox).
 
 ## Next step
-Run Vercel Preview deployment with live `GEMINI_API_KEY` + Cloudflare env vars, verify CDN static delivery (`public/`) vs Express `/api/barrett/*` routing on a live Preview URL (and confirm whether zero-config `server.js` needs a minimal `vercel.json` only if Preview routing shows a conflict), execute live `/analyze` + `/guide` + Playwright Chromium smoke checks, and then rebuild the export ZIP before any Production release.
+Create/switch to your Preview branch in Git, run Playwright & live Gemini/Cloudflare verification with real env vars on a Vercel Preview deployment, and rebuild the export ZIP if needed before any Production release.
 
 ## How to run
 `npm run dev` (starts `server.js` on port `3000`, serving `ASCEND/` and `/api/barrett/*`).

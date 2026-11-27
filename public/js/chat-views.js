@@ -15,7 +15,13 @@ window.LM = window.LM || {};
     },
     focusMsgId: null,
     draftAttachment: null,
-    attachError: ''
+    attachError: '',
+    profileOverlay: {
+      mentorId: null,
+      savedFeedScrollTop: null,
+      pushedHistory: false,
+      closingHistory: false
+    }
   };
 
   function formatAttachmentMeta(att) {
@@ -109,8 +115,93 @@ window.LM = window.LM || {};
     if (!items || !items.length) return '';
     return '<div class="' + (cls || 'chat-followups') + '">' +
       items.map(text =>
-        '<button type="button" class="chat-chip" data-act="chat-followup" data-prompt="' + E(text) + '">' + E(text) + '</button>'
+        '<button type="button" class="chat-chip" data-act="chat-followup" data-prompt="' + E(text) + '" aria-label="' + E(T('chat.followupAria', { prompt: text })) + '">' + E(text) + '</button>'
       ).join('') +
+    '</div>';
+  }
+
+  function renderMentorProfileHtml(profile) {
+    if (!profile) return '';
+    const initial = E((profile.displayName || profile.shortName || '?').trim().charAt(0).toUpperCase() || '?');
+    const photoSrc = profile.photo || profile.avatar || '';
+    const fallbackSrc = profile.avatar && profile.avatar !== photoSrc ? profile.avatar : '';
+    const onErrAttr = fallbackSrc
+      ? ' onerror="if(!this.dataset.fb){this.dataset.fb=1;this.src=\'' + E(fallbackSrc) + '\';}else{this.style.display=\'none\';this.parentNode.classList.add(\'no-photo\');}"'
+      : ' onerror="this.style.display=\'none\';this.parentNode.classList.add(\'no-photo\');"';
+
+    const specsHtml = (profile.specializations || []).length
+      ? '<section class="mentor-prof-card">' +
+          '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.specializations')) + '</h2>' +
+          '<ul class="mentor-prof-spec-list">' +
+            profile.specializations.map(item =>
+              '<li class="mentor-prof-spec-item">' + I('check', { size: 14 }) + '<span>' + E(item) + '</span></li>'
+            ).join('') +
+          '</ul>' +
+        '</section>'
+      : '';
+
+    const principlesHtml = (profile.principles || []).length
+      ? '<section class="mentor-prof-card">' +
+          '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.principles')) + '</h2>' +
+          '<ol class="mentor-prof-principles">' +
+            profile.principles.map((item, idx) =>
+              '<li class="mentor-prof-principle">' +
+                '<span class="mentor-prof-pidx">' + String(idx + 1).padStart(2, '0') + '</span>' +
+                '<span class="mentor-prof-ptxt">' + E(item) + '</span>' +
+              '</li>'
+            ).join('') +
+          '</ol>' +
+        '</section>'
+      : '';
+
+    return '<div class="mentor-prof-shell chat-theme-' + E(profile.accent || 'barrett') + '">' +
+      '<div class="mentor-prof-topbar">' +
+        '<button type="button" class="backbtn mentor-prof-back" id="mentor-profile-back" data-act="close-mentor-profile" aria-label="' + E(T('chat.profile.backAria')) + '">' +
+          I('back') +
+          '<span>' + E(T('chat.profile.backLabel')) + '</span>' +
+        '</button>' +
+        '<span class="mentor-prof-topbar-title">' + E(profile.displayName) + '</span>' +
+        '<span class="mentor-prof-topbar-spacer" aria-hidden="true"></span>' +
+      '</div>' +
+      '<div class="mentor-prof-hero">' +
+        '<div class="mentor-prof-hero-fallback" aria-hidden="true">' + initial + '</div>' +
+        (photoSrc
+          ? '<img class="mentor-prof-photo" src="' + E(photoSrc) + '" alt="' + E(profile.displayName) + '"' + onErrAttr + '>'
+          : '') +
+        '<div class="mentor-prof-hero-fade" aria-hidden="true"></div>' +
+      '</div>' +
+      '<div class="mentor-prof-body">' +
+        '<div class="mentor-prof-ident">' +
+          '<h1 class="mentor-prof-name">' + E(profile.displayName) + '</h1>' +
+          '<p class="mentor-prof-status">' + E(profile.status) + '</p>' +
+        '</div>' +
+        '<section class="mentor-prof-card">' +
+          '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.about')) + '</h2>' +
+          '<p class="mentor-prof-copy">' + E(profile.personality) + '</p>' +
+          '<h3 class="mentor-prof-sub-title">' + E(T('chat.profile.section.bio')) + '</h3>' +
+          '<p class="mentor-prof-copy dim-copy">' + E(profile.bio) + '</p>' +
+        '</section>' +
+        (profile.quote
+          ? '<blockquote class="mentor-prof-quote" aria-label="' + E(T('chat.profile.section.quote')) + '">' +
+              '<span class="mentor-prof-qmark" aria-hidden="true">“</span>' +
+              '<p class="mentor-prof-qtext">' + E(profile.quote) + '</p>' +
+            '</blockquote>'
+          : '') +
+        (profile.interestsLine
+          ? '<section class="mentor-prof-card">' +
+              '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.interests')) + '</h2>' +
+              '<p class="mentor-prof-interests">' + E(profile.interestsLine) + '</p>' +
+            '</section>'
+          : '') +
+        specsHtml +
+        principlesHtml +
+        '<div class="mentor-prof-cta-wrap">' +
+          '<button type="button" class="btn mentor-prof-cta" data-act="close-mentor-profile">' +
+            I('chat', { size: 17 }) +
+            '<span>' + E(T('chat.profile.backToChat')) + '</span>' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
     '</div>';
   }
 
@@ -594,15 +685,27 @@ window.LM = window.LM || {};
         ? '<div class="chat-drop-overlay" id="chat-drop-overlay" aria-hidden="true">' + I('image', { size: 22 }) + '<span>' + E(T('chat.attach.dropHint')) + '</span></div>'
         : '';
 
+      const mentorProfile = LM.getMentorProfile ? LM.getMentorProfile(threadId) : null;
+      const profileOpenable = Boolean(mentorProfile && mentorProfile.profileEnabled);
+      const headIdentityHtml = profileOpenable
+        ? '<button type="button" class="chat-head-profile-trigger" id="chat-head-profile-btn" data-act="mentor-profile" data-mentor-id="' + E(threadId) + '" aria-label="' + E(T('chat.profile.openAria', { name: mentorProfile.displayName })) + '">' +
+            avatarMarkup(meta, 'sm') +
+            '<span class="chat-head-info">' +
+              '<span class="chat-head-name-row"><span class="chat-head-name">' + E(title) + '</span>' + (th && th.archived ? '<span class="chat-arch-tag">' + E(T('chat.archive.badge')) + '</span>' : '') + '</span>' +
+              '<span class="chat-head-role">' + E(isBusy ? T('chat.typingLabel') : T(meta.roleKey)) + '</span>' +
+            '</span>' +
+          '</button>'
+        : avatarMarkup(meta, 'sm') +
+          '<div class="chat-head-info">' +
+            '<div class="chat-head-name-row"><div class="chat-head-name">' + E(title) + '</div>' + (th && th.archived ? '<span class="chat-arch-tag">' + E(T('chat.archive.badge')) + '</span>' : '') + '</div>' +
+            '<div class="chat-head-role">' + E(isBusy ? T('chat.typingLabel') : T(meta.roleKey)) + '</div>' +
+          '</div>';
+
       return '<section class="chat-thread chat-theme-' + E(meta.accent) + '" data-thread-id="' + E(threadId) + '">' +
         dropOverlayHtml +
         '<header class="chat-head">' +
           '<a class="backbtn chat-back" href="#/chat" aria-label="' + E(T('common.back')) + '">' + I('back') + '</a>' +
-          avatarMarkup(meta, 'sm') +
-          '<div class="chat-head-info">' +
-            '<div class="chat-head-name-row"><div class="chat-head-name">' + E(title) + '</div>' + (th && th.archived ? '<span class="chat-arch-tag">' + E(T('chat.archive.badge')) + '</span>' : '') + '</div>' +
-            '<div class="chat-head-role">' + E(isBusy ? T('chat.typingLabel') : T(meta.roleKey)) + '</div>' +
-          '</div>' +
+          headIdentityHtml +
           '<div class="chat-head-acts">' +
             restoreHeadBtn +
             '<button type="button" class="iconbtn chat-head-btn' + (searchOpen ? ' active' : '') + '" id="chat-search-toggle" data-act="chat-search-toggle" aria-expanded="' + searchOpen + '" aria-label="' + E(T('chat.searchToggleAria')) + '">' + I('search', { size: 16 }) + '</button>' +
@@ -649,6 +752,126 @@ window.LM = window.LM || {};
       }
       if (targetId && this.scrollToMessage(targetId)) return;
       this.scrollToBottom();
+    },
+
+    renderMentorProfile(mentorId) {
+      const profile = LM.getMentorProfile ? LM.getMentorProfile(mentorId) : null;
+      return renderMentorProfileHtml(profile);
+    },
+
+    isMentorProfileOpen() {
+      return Boolean(document.getElementById('mentor-profile-overlay'));
+    },
+
+    openMentorProfile(mentorId, opts) {
+      opts = opts || {};
+      const profile = LM.getMentorProfile ? LM.getMentorProfile(mentorId) : null;
+      if (!profile || !profile.profileEnabled) return false;
+      const mount = document.getElementById('app') || document.body;
+      if (!mount || typeof document.createElement !== 'function') return false;
+
+      const feed = document.getElementById('chat-feed');
+      const existing = document.getElementById('mentor-profile-overlay');
+      if (!existing) {
+        st.profileOverlay.savedFeedScrollTop = feed ? feed.scrollTop : null;
+      }
+      st.profileOverlay.mentorId = mentorId;
+      st.profileOverlay.closingHistory = false;
+
+      const overlay = existing || document.createElement('div');
+      overlay.id = 'mentor-profile-overlay';
+      overlay.className = 'mentor-profile-overlay';
+      overlay.dataset.mentorId = mentorId;
+      overlay.setAttribute('role', 'dialog');
+      overlay.setAttribute('aria-modal', 'true');
+      overlay.setAttribute('aria-label', profile.displayName);
+      overlay.innerHTML = renderMentorProfileHtml(profile);
+      overlay.scrollTop = 0;
+
+      if (!existing) {
+        mount.appendChild(overlay);
+      }
+
+      if (
+        opts.pushHistory !== false &&
+        typeof window !== 'undefined' &&
+        window.history &&
+        typeof window.history.pushState === 'function'
+      ) {
+        const curState = window.history.state;
+        if (!curState || curState.ascendOverlay !== 'mentor-profile' || curState.mentorId !== mentorId) {
+          try {
+            window.history.pushState({ ascendOverlay: 'mentor-profile', mentorId: mentorId }, '');
+            st.profileOverlay.pushedHistory = true;
+          } catch (e) {}
+        }
+      }
+
+      const backBtn = document.getElementById('mentor-profile-back');
+      if (backBtn && typeof backBtn.focus === 'function') {
+        try { backBtn.focus({ preventScroll: true }); } catch (e) { backBtn.focus(); }
+      }
+      return true;
+    },
+
+    closeMentorProfile(opts) {
+      opts = opts || {};
+      const overlay = document.getElementById('mentor-profile-overlay');
+      const wasOpen = Boolean(overlay);
+      if (overlay && typeof overlay.remove === 'function') {
+        overlay.remove();
+      }
+      const savedTop = st.profileOverlay.savedFeedScrollTop;
+      const feed = document.getElementById('chat-feed');
+      if (feed && savedTop != null) {
+        feed.scrollTop = savedTop;
+      }
+
+      const shouldPopHistory =
+        wasOpen &&
+        !opts.fromPopstate &&
+        !opts.skipHistory &&
+        st.profileOverlay.pushedHistory &&
+        typeof window !== 'undefined' &&
+        window.history &&
+        window.history.state &&
+        window.history.state.ascendOverlay === 'mentor-profile' &&
+        typeof window.history.back === 'function';
+
+      st.profileOverlay.mentorId = null;
+      st.profileOverlay.savedFeedScrollTop = null;
+      st.profileOverlay.pushedHistory = false;
+
+      if (shouldPopHistory) {
+        st.profileOverlay.closingHistory = true;
+        try {
+          window.history.back();
+        } catch (e) {
+          st.profileOverlay.closingHistory = false;
+        }
+      } else {
+        st.profileOverlay.closingHistory = false;
+      }
+
+      return wasOpen;
+    },
+
+    prefillComposer(prompt) {
+      const text = String(prompt || '').trim();
+      const inp = document.getElementById('chat-input');
+      if (!inp || !text) return false;
+      inp.value = text;
+      if (inp.style) {
+        inp.style.height = 'auto';
+        if (inp.scrollHeight) {
+          inp.style.height = Math.min(inp.scrollHeight, 120) + 'px';
+        }
+      }
+      if (typeof inp.focus === 'function') inp.focus();
+      if (typeof inp.setSelectionRange === 'function') {
+        try { inp.setSelectionRange(text.length, text.length); } catch (e) {}
+      }
+      return true;
     }
   };
 })();

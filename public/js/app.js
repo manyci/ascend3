@@ -336,6 +336,9 @@
   }
 
   function navigate() {
+    if (LM.ChatViews && LM.ChatViews.isMentorProfileOpen && LM.ChatViews.isMentorProfileOpen()) {
+      LM.ChatViews.closeMentorProfile({ skipHistory: true });
+    }
     const r = parseHash();
     if (route.path === 'practice' && r.path !== 'practice') {
       stopPracticeTick();
@@ -989,7 +992,28 @@
         }
         break;
       }
-      case 'chat-followup':
+      case 'mentor-profile': {
+        const mentorId = el.dataset.mentorId || route.arg;
+        if (LM.ChatViews && LM.ChatViews.openMentorProfile && mentorId) {
+          LM.ChatViews.openMentorProfile(mentorId);
+        }
+        break;
+      }
+      case 'close-mentor-profile': {
+        if (LM.ChatViews && LM.ChatViews.closeMentorProfile) {
+          LM.ChatViews.closeMentorProfile();
+        }
+        break;
+      }
+      case 'chat-followup': {
+        const prompt = (el.dataset.prompt || '').trim();
+        if (!prompt || route.path !== 'chat' || route.arg !== 'barrett') break;
+        if (LM.ChatViews) {
+          LM.ChatViews.setFocusMessage(null);
+          if (LM.ChatViews.prefillComposer) LM.ChatViews.prefillComposer(prompt);
+        }
+        break;
+      }
       case 'chat-starter': {
         const prompt = (el.dataset.prompt || '').trim();
         if (!prompt || route.path !== 'chat' || route.arg !== 'barrett') break;
@@ -1517,6 +1541,12 @@
   });
 
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !document.getElementById('sheet-scrim') && LM.ChatViews && LM.ChatViews.isMentorProfileOpen && LM.ChatViews.isMentorProfileOpen()) {
+      e.preventDefault();
+      e.stopPropagation();
+      LM.ChatViews.closeMentorProfile();
+      return;
+    }
     if (e.target && e.target.id === 'chat-input' && e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
       e.preventDefault();
       submitChatComposer();
@@ -1525,7 +1555,7 @@
       LM.ChatViews.stepSearchMatch(route.arg, e.shiftKey ? -1 : 1);
       LM.ChatViews.refreshFeed(route.arg);
     }
-  });
+  }, true);
 
   document.addEventListener('change', e => {
     if (e.target && e.target.id === 'chat-file-input') {
@@ -1642,6 +1672,14 @@
     }
 
     window.addEventListener('hashchange', navigate);
+    window.addEventListener('popstate', () => {
+      if (LM.ChatViews && LM.ChatViews.isMentorProfileOpen && LM.ChatViews.isMentorProfileOpen()) {
+        const st = window.history && window.history.state;
+        if (!st || st.ascendOverlay !== 'mentor-profile') {
+          LM.ChatViews.closeMentorProfile({ fromPopstate: true });
+        }
+      }
+    });
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) {
         const before = LM.Store.get().daily.date;

@@ -37,6 +37,81 @@ window.LM = window.LM || {};
     }
   };
 
+  LM.MENTOR_PROFILES = {
+    barrett: {
+      id: 'barrett',
+      accent: 'barrett',
+      profileEnabled: true,
+      avatar: '/assets/avatars/barrett.jpg',
+      photo: '/assets/avatars/barrett-portrait.png',
+      displayNameKey: 'chat.profile.barrett.displayName',
+      shortNameKey: 'chat.char.barrett.name',
+      roleKey: 'chat.char.barrett.role',
+      statusKey: 'chat.profile.barrett.status',
+      personalityKey: 'chat.profile.barrett.personality',
+      bioKey: 'chat.profile.barrett.bio',
+      quoteKey: 'chat.profile.barrett.quote',
+      interestsKey: 'chat.profile.barrett.interests',
+      specializationsKey: 'chat.profile.barrett.specializations',
+      principlesKey: 'chat.profile.barrett.principles'
+    },
+    chico: {
+      id: 'chico',
+      accent: 'chico',
+      profileEnabled: false,
+      avatar: '/assets/avatars/chico.jpg',
+      photo: '/assets/avatars/chico.jpg',
+      displayNameKey: 'chat.profile.chico.displayName',
+      shortNameKey: 'chat.char.chico.name',
+      roleKey: 'chat.char.chico.role',
+      statusKey: 'chat.profile.chico.status',
+      personalityKey: 'chat.profile.chico.personality',
+      bioKey: 'chat.profile.chico.bio',
+      quoteKey: 'chat.profile.chico.quote',
+      interestsKey: 'chat.profile.chico.interests',
+      specializationsKey: 'chat.profile.chico.specializations',
+      principlesKey: 'chat.profile.chico.principles'
+    }
+  };
+
+  function tr(key) {
+    return (LM.t && typeof LM.t === 'function') ? LM.t(key) : key;
+  }
+
+  function splitPipeList(val) {
+    if (Array.isArray(val)) return val.map(x => String(x || '').trim()).filter(Boolean);
+    return String(val || '')
+      .split('|')
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  LM.getMentorProfile = function (id) {
+    const raw = id && LM.MENTOR_PROFILES && LM.MENTOR_PROFILES[id];
+    if (!raw) return null;
+    const interestsRaw = raw.interestsKey ? tr(raw.interestsKey) : '';
+    return {
+      id: raw.id,
+      accent: raw.accent || raw.id,
+      profileEnabled: Boolean(raw.profileEnabled),
+      avatar: raw.avatar,
+      photo: raw.photo || raw.avatar,
+      displayName: raw.displayNameKey ? tr(raw.displayNameKey) : tr(raw.shortNameKey),
+      shortName: raw.shortNameKey ? tr(raw.shortNameKey) : '',
+      role: raw.roleKey ? tr(raw.roleKey) : '',
+      status: raw.statusKey ? tr(raw.statusKey) : '',
+      personality: raw.personalityKey ? tr(raw.personalityKey) : '',
+      bio: raw.bioKey ? tr(raw.bioKey) : '',
+      quote: raw.quoteKey ? tr(raw.quoteKey) : '',
+      interestsLine: interestsRaw,
+      interests: interestsRaw
+        ? interestsRaw.split('·').map(s => s.trim()).filter(Boolean)
+        : [],
+      specializations: raw.specializationsKey ? splitPipeList(tr(raw.specializationsKey)) : [],
+      principles: raw.principlesKey ? splitPipeList(tr(raw.principlesKey)) : []
+    };
+  };
+
   let state = null;
   const listeners = new Set();
 
