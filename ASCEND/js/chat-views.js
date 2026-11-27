@@ -140,6 +140,26 @@ window.LM = window.LM || {};
         '</section>'
       : '';
 
+    const mentorThread = LM.ChatStore && profile.id ? LM.ChatStore.getThread(profile.id) : null;
+    const mentorMessages = mentorThread && Array.isArray(mentorThread.messages) ? mentorThread.messages : [];
+    const userMessages = mentorMessages.filter(msg => msg && msg.role === 'user').length;
+    const activeDays = new Set(mentorMessages.filter(msg => msg && msg.ts).map(msg => new Date(msg.ts).toDateString())).size;
+    const statsTitle = LM.I18n && LM.I18n.lang() === 'en' ? 'ACTIVITY' : 'АКТИВНОСТЬ';
+    const statsLabels = LM.I18n && LM.I18n.lang() === 'en'
+      ? ['Messages', 'Your messages', 'Active days']
+      : ['Сообщения', 'Твои сообщения', 'Активные дни'];
+    const statsHtml = '<section class="mentor-prof-card">' +
+      '<h2 class="mentor-prof-sec-title">' + statsTitle + '</h2>' +
+      '<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;text-align:center">' +
+        [[mentorMessages.length, statsLabels[0]], [userMessages, statsLabels[1]], [activeDays, statsLabels[2]]].map(item =>
+          '<div style="min-width:0;padding:12px 6px;border-radius:12px;background:var(--surface-2,rgba(255,255,255,.04))">' +
+            '<strong style="display:block;font-size:22px;font-variant-numeric:tabular-nums">' + item[0] + '</strong>' +
+            '<span style="display:block;font-size:11px;line-height:1.35;color:var(--muted)">' + E(item[1]) + '</span>' +
+          '</div>'
+        ).join('') +
+      '</div>' +
+    '</section>';
+
     const principlesHtml = (profile.principles || []).length
       ? '<section class="mentor-prof-card">' +
           '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.principles')) + '</h2>' +
@@ -175,6 +195,7 @@ window.LM = window.LM || {};
           '<h1 class="mentor-prof-name">' + E(profile.displayName) + '</h1>' +
           '<p class="mentor-prof-status">' + E(profile.status) + '</p>' +
         '</div>' +
+        statsHtml +
         '<section class="mentor-prof-card">' +
           '<h2 class="mentor-prof-sec-title">' + E(T('chat.profile.section.about')) + '</h2>' +
           '<p class="mentor-prof-copy">' + E(profile.personality) + '</p>' +
