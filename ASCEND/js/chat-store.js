@@ -58,7 +58,7 @@ window.LM = window.LM || {};
     chico: {
       id: 'chico',
       accent: 'chico',
-      profileEnabled: false,
+      profileEnabled: true,
       avatar: '/assets/avatars/chico.jpg',
       photo: '/assets/avatars/chico.jpg',
       displayNameKey: 'chat.profile.chico.displayName',
